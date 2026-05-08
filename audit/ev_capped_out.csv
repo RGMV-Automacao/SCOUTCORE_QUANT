@@ -34,8 +34,13 @@ cartoes_total_ft_under_7_5
 escanteios_total_ht_under_6_5
 escanteios_home_ht_under_4_5
 cartoes_home_ft_under_3_5
+defesas_total_ft_under_5_5
+defesas_total_ft_under_6_5
+defesas_home_ft_over_3_5
+defesas_total_ft_under_7_5
 chutes_alvo_total_ft_under_8_5
 gols_total_2t_under_2_5
+defesas_total_ft_under_4_5
 gols_total_2t_over_0_5
 gols_total_2t_under_1_5
 asian_total_total_ft_under_2_75
@@ -54,6 +59,8 @@ asian_total_total_ht_over_0_75
 gols_total_ht_over_1_5
 chutes_alvo_total_ft_over_8_5
 gols_total_ft_under_1_5
+defesas_home_ft_under_3_5
+defesas_total_ft_over_4_5
 asian_total_total_ft_over_3_75
 gols_total_ht_over_2_5
 btts_total_ft_sim
@@ -61,6 +68,8 @@ chutes_alvo_total_ht_over_3_5
 defesas_total_ft_over_5_5
 chutes_alvo_away_ht_under_1_5
 chutes_alvo_total_ft_under_9_5
+defesas_home_ft_under_2_5
+defesas_away_ft_over_2_5
 defesas_total_ft_over_6_5
 asian_total_total_ft_over_2_25
 btts_total_ht_sim
@@ -95,7 +104,9 @@ chutes_alvo_total_ft_under_10_5
 asian_total_total_ft_over_3_25
 defesas_total_ft_over_7_5
 asian_total_total_ht_over_1_75
+defesas_away_ft_over_3_5
 cartoes_home_ft_over_1_5
+defesas_home_ft_under_1_5
 cartoes_home_ht_over_0_5
 dupla_total_ft_x2
 handicap_total_ft_away_minus_1
@@ -106,8 +117,10 @@ chutes_total_ft_over_28_5
 chutes_total_ft_over_29_5
 defesas_total_ft_over_8_5
 cartoes_away_ht_over_0_5
+defesas_away_ft_over_4_5
 cartoes_home_ft_over_2_5
 asian_total_total_ht_over_1_25
+impedimentos_away_ft_under_1_5
 cartoes_total_ht_over_1_5
 cartoes_home_ft_over_3_5
 cartoes_total_ft_over_4_5

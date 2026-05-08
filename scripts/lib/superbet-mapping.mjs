@@ -423,6 +423,10 @@ export function buildLookupPlan(market_key, home, away) {
   }
 
   // ─────────────────────── Defesas do goleiro ───────────────────────
+  // FT total: 'Total de Defesas do Goleiro'
+  // HT total: '1º Tempo - Total de Defesas do Goleiro'
+  // FT por equipe: 'Total de Defesas do Goleiro {Team}' (sem hífen, time no final)
+  // HT por equipe: '1º Tempo - Total de Defesas do Goleiro {Team}'
   m = k.match(/^defesas_(total|home|away)_(ft|ht)_(over|under)_(\d+_\d+|\d+)$/);
   if (m) {
     const scope = m[1], period = m[2], dir = m[3], lineRaw = m[4];
@@ -434,24 +438,36 @@ export function buildLookupPlan(market_key, home, away) {
       if (period === 'ft') plans.push({ mercadoEqOrLike: { eq: 'Total de Defesas do Goleiro' }, selecao: sel, linha });
       else plans.push({ mercadoEqOrLike: { like: '%Tempo - Total de Defesas do Goleiro' }, selecao: sel, linha });
     } else if (team) {
-      // Superbet não detalha por equipe; skip honesto
-      return [];
+      if (period === 'ft') {
+        plans.push({ mercadoEqOrLike: { eq: `Total de Defesas do Goleiro ${team}` }, selecao: sel, linha });
+      } else {
+        plans.push({ mercadoEqOrLike: { like: `%Tempo - Total de Defesas do Goleiro ${team}` }, selecao: sel, linha });
+      }
     }
     return plans;
   }
 
   // ─────────────────────── Impedimentos ───────────────────────
-  m = k.match(/^impedimentos_(total|home|away)_ft_(over|under)_(\d+_\d+|\d+)$/);
+  // FT total: 'Total de Impedimentos'
+  // HT total: '1º Tempo - Total de Impedimentos'
+  // FT por equipe: '{Team} - Total de Impedimentos'
+  // HT por equipe: '1º Tempo - {Team} Impedimentos' (sem 'Total de', sem hífen)
+  m = k.match(/^impedimentos_(total|home|away)_(ft|ht)_(over|under)_(\d+_\d+|\d+)$/);
   if (m) {
-    const scope = m[1], dir = m[2], lineRaw = m[3];
+    const scope = m[1], period = m[2], dir = m[3], lineRaw = m[4];
     const linha = parseLine(lineRaw);
     if (!linha) return [];
     const sel = selecaoOverUnder(dir, linha);
+    const team = scope === 'home' ? home : scope === 'away' ? away : null;
     if (scope === 'total') {
-      plans.push({ mercadoEqOrLike: { eq: 'Total de Impedimentos' }, selecao: sel, linha });
-    } else {
-      // Superbet tem 'Cada Equipe Mais de X Impedimentos' (composto Sim/Não), não cobre direção pura
-      return [];
+      if (period === 'ft') plans.push({ mercadoEqOrLike: { eq: 'Total de Impedimentos' }, selecao: sel, linha });
+      else plans.push({ mercadoEqOrLike: { like: '%Tempo - Total de Impedimentos' }, selecao: sel, linha });
+    } else if (team) {
+      if (period === 'ft') {
+        plans.push({ mercadoEqOrLike: { eq: `${team} - Total de Impedimentos` }, selecao: sel, linha });
+      } else {
+        plans.push({ mercadoEqOrLike: { like: `%Tempo - ${team} Impedimentos` }, selecao: sel, linha });
+      }
     }
     return plans;
   }

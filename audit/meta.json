@@ -11,8 +11,8 @@
     "league_priors_missing:brasileirao"
   ],
   "slots_count": 561,
-  "ev_ranked_count": 82,
-  "ev_capped_out_count": 120,
+  "ev_ranked_count": 85,
+  "ev_capped_out_count": 133,
   "engine_b": {
     "available": true,
     "reason": null,
@@ -541,8 +541,8 @@
       "Último Gol",
       "Último escanteio"
     ],
-    "slots_with_real_odd": 202,
-    "slots_mapped_but_no_market": 354,
+    "slots_with_real_odd": 218,
+    "slots_mapped_but_no_market": 338,
     "slots_unmapped_in_catalog": 5
   },
   "odds_policy": "real_superbet_only",
@@ -566,7 +566,7 @@
   "scout_notes": [
     "phantom_edge_detected: revisar odds e lambda",
     "low_confidence_in_top5: 5 pick(s) com confidence<0.4",
-    "family_cap_filtered: 120 mercado(s) excluído(s) do topo"
+    "family_cap_filtered: 133 mercado(s) excluído(s) do topo"
   ],
-  "generated_at": "2026-05-08T14:40:16.909Z"
+  "generated_at": "2026-05-08T15:52:21.339Z"
 }
