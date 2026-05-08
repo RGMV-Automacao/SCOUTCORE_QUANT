@@ -26,6 +26,7 @@ import { loadIsotonicMap, getIsotonic, applyIsotonicToSlot } from '@scoutcore/is
 import { buildScoutReport } from '@scoutcore/scout';
 import { buildSignature } from '../apps/api/src/engine-signature.mjs';
 import { SqliteMatchRepository } from '@scoutcore/data-access';
+import { lookupSuperbetOdd } from './lib/superbet-mapping.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -47,19 +48,41 @@ function toCsv(rows, headers) {
 }
 
 async function main() {
-  // 1. Pega último confronto (tabela `partidas`) com priors disponíveis
+  // 1. Pega partida com (a) priors+profiles E (b) odds Superbet reais.
+  //    Quando o usuário passa MATCH_HOME/MATCH_AWAY/MATCH_DATE via env, usamos.
   const db = new Database(DB_PATH, { readonly: true, fileMustExist: true });
-  const c = db.prepare(`
-    SELECT p.* FROM partidas p
-    INNER JOIN league_priors lp ON lp.liga = p.liga
-    INNER JOIN team_profile_v2 tph ON tph.team = p.home_team AND tph.liga = p.liga
-    INNER JOIN team_profile_v2 tpa ON tpa.team = p.away_team AND tpa.liga = p.liga
-    WHERE p.modo = 'FT' AND p.data_partida IS NOT NULL
-    ORDER BY p.data_partida DESC
-    LIMIT 1
-  `).get() || db.prepare(`SELECT * FROM partidas WHERE modo='FT' ORDER BY data_partida DESC LIMIT 1`).get();
+  let c;
+  if (process.env.MATCH_HOME && process.env.MATCH_AWAY && process.env.MATCH_DATE) {
+    c = db.prepare(`SELECT * FROM partidas WHERE home_team=? AND away_team=? AND data_partida LIKE ? AND modo='FT' LIMIT 1`).get(
+      process.env.MATCH_HOME, process.env.MATCH_AWAY, `${process.env.MATCH_DATE}%`
+    );
+  }
+  if (!c) {
+    // tenta partida com priors+profiles+odds Superbet
+    c = db.prepare(`
+      SELECT p.* FROM partidas p
+      INNER JOIN league_priors lp ON lp.liga = p.liga
+      INNER JOIN team_profile_v2 tph ON tph.team = p.home_team AND tph.liga = p.liga
+      INNER JOIN team_profile_v2 tpa ON tpa.team = p.away_team AND tpa.liga = p.liga
+      INNER JOIN (SELECT DISTINCT home_team, away_team, data_jogo FROM odds WHERE fonte='superbet') o
+        ON o.home_team = p.home_team AND o.away_team = p.away_team AND o.data_jogo = SUBSTR(p.data_partida, 1, 10)
+      WHERE p.modo = 'FT'
+      ORDER BY p.data_partida DESC
+      LIMIT 1
+    `).get();
+  }
+  if (!c) {
+    // fallback: priors+profiles, sem odds Superbet (audit usará synthetic odds)
+    c = db.prepare(`
+      SELECT p.* FROM partidas p
+      INNER JOIN league_priors lp ON lp.liga = p.liga
+      INNER JOIN team_profile_v2 tph ON tph.team = p.home_team AND tph.liga = p.liga
+      INNER JOIN team_profile_v2 tpa ON tpa.team = p.away_team AND tpa.liga = p.liga
+      WHERE p.modo = 'FT' AND p.data_partida IS NOT NULL
+      ORDER BY p.data_partida DESC LIMIT 1
+    `).get();
+  }
   if (!c) throw new Error('no_match_in_db');
-  db.close();
 
   const match = {
     external_id: String(c.id_confronto || c.id || `${c.home_team}-${c.away_team}-${c.data_partida}`),
@@ -67,6 +90,19 @@ async function main() {
     date: (c.data_partida || '').slice(0, 10),
   };
   console.log(`[audit] match: ${match.home} × ${match.away} | ${match.liga} | ${match.date}`);
+
+  // 1b. Snapshot de odds Superbet por (mercado, selecao, linha) deste jogo
+  const superbetMap = new Map(); // key: market|selecao|linha → odd
+  const superbetMarkets = new Set();
+  const odateLike = match.date;
+  const sbRows = db.prepare(`SELECT mercado, selecao, linha, odd FROM odds WHERE fonte='superbet' AND home_team=? AND away_team=? AND data_jogo=? ORDER BY criado_em DESC`).all(match.home, match.away, odateLike);
+  for (const r of sbRows) {
+    const key = `${r.mercado}|${r.selecao}|${r.linha}`;
+    if (!superbetMap.has(key)) superbetMap.set(key, r.odd);
+    superbetMarkets.add(r.mercado);
+  }
+  console.log(`[audit] Superbet snapshot: ${sbRows.length} odds, ${superbetMarkets.size} mercados distintos`);
+  db.close();
 
   // 2. Repo
   const repo = new SqliteMatchRepository(DB_PATH);
@@ -106,17 +142,35 @@ async function main() {
 
   const combined = combine({ slotsA: aOut.slots, slotsB: bOut.available ? bOut.slots : null });
 
+  // Odds: tenta REAIS Superbet por slot; só usa sintético quando explicitamente pedido.
   const odds = {};
-  // odds sintéticas para auditoria visualizar edge_pct: fair_odd * 1.05 (margem 5%)
-  // Marcamos isso explicitamente em meta.json. NÃO são odds reais de mercado.
-  const SYNTHETIC_ODDS = process.env.AUDIT_SYNTHETIC_ODDS !== '0';
+  const oddsProvenance = {}; // market_key → { kind, source, mercado_superbet, selecao, linha, reason }
+  const dbRO = new Database(DB_PATH, { readonly: true });
+  let realCount = 0, mappedNotOffered = 0, unmapped = 0;
+  for (const s of combined) {
+    const lk = lookupSuperbetOdd(dbRO, { market_key: s.market_key, home: match.home, away: match.away, data: match.date });
+    if (lk.found) {
+      odds[s.market_key] = lk.odd;
+      oddsProvenance[s.market_key] = { kind: 'real', source: 'superbet', mercado_superbet: lk.mercado_superbet, selecao_superbet: lk.selecao_superbet, linha_superbet: lk.linha_superbet };
+      realCount++;
+    } else {
+      oddsProvenance[s.market_key] = { kind: 'absent', reason: lk.reason };
+      if (lk.reason === 'unmapped_in_motor_catalog') unmapped++;
+      else mappedNotOffered++;
+    }
+  }
+  dbRO.close();
+  const SYNTHETIC_ODDS = process.env.AUDIT_SYNTHETIC_ODDS === '1';
   if (SYNTHETIC_ODDS) {
     for (const s of combined) {
+      if (odds[s.market_key] != null) continue; // não sobrescreve real
       if (s.fair_prob > 0.02 && s.fair_prob < 0.98) {
         odds[s.market_key] = +(1 / s.fair_prob * 1.05).toFixed(3);
+        oddsProvenance[s.market_key] = { kind: 'synthetic', source: 'fair_x1.05', reason: 'no_real_odd_available' };
       }
     }
   }
+  console.log(`[audit] odds: real=${realCount}/${combined.length}, mapped_no_market=${mappedNotOffered}, unmapped=${unmapped}, synthetic_fill=${SYNTHETIC_ODDS}`);
   const isoMap = loadIsotonicMap(repo.db);
   const qgGates = QG.getGates();
   for (const s of combined) {
@@ -164,7 +218,19 @@ async function main() {
   const sig = buildSignature();
 
   // 4. Export CSVs
-  const predictionsRows = combined.map((s) => ({
+  const bSlotKeys = new Set(bOut.available ? bOut.slots.map((x) => x.market_key) : []);
+  const aSlotKeys = new Set(aOut.slots.map((x) => x.market_key));
+  function coverageStatus(market_key) {
+    const inA = aSlotKeys.has(market_key);
+    const inB = bSlotKeys.has(market_key);
+    if (inA && inB) return 'engine_a_and_b';
+    if (inA) return 'engine_a_only';
+    if (inB) return 'engine_b_only';
+    return 'none';
+  }
+  const predictionsRows = combined.map((s) => {
+    const op = oddsProvenance[s.market_key] ?? { kind: 'absent', reason: 'unknown' };
+    return {
     market_key: s.market_key,
     family: s.family,
     direction: s.direction,
@@ -178,6 +244,14 @@ async function main() {
     confidence: s.confidence,
     certified: s.certified,
     source: s.source,
+    coverage_status: coverageStatus(s.market_key),
+    odd_kind: op.kind,
+    odd_source: op.source ?? '',
+    odd_reason: op.reason ?? '',
+    superbet_present: op.kind === 'real',
+    superbet_mercado: op.mercado_superbet ?? '',
+    superbet_selecao: op.selecao_superbet ?? '',
+    superbet_linha: op.linha_superbet ?? '',
     isotonic_applied: s.provenance?.isotonic?.applied ?? false,
     isotonic_p_before: s.provenance?.isotonic?.p_before ?? '',
     isotonic_p_after: s.provenance?.isotonic?.p_after ?? '',
@@ -189,15 +263,32 @@ async function main() {
     fair_prob_a: s.provenance?.fair_prob_a ?? '',
     fair_prob_b: s.provenance?.fair_prob_b ?? '',
     divergence_pp: s.provenance?.divergence_pp ?? '',
-  }));
+  };
+  });
 
   fs.writeFileSync(resolve(OUT, 'predictions.csv'), toCsv(predictionsRows, [
     'market_key','family','direction','line','period','scope',
     'fair_prob','fair_odd','market_odd','edge_pct','confidence','certified','source',
+    'coverage_status','odd_kind','odd_source','odd_reason',
+    'superbet_present','superbet_mercado','superbet_selecao','superbet_linha',
     'isotonic_applied','isotonic_p_before','isotonic_p_after',
     'calib_applied','family_cap_excluded','phantom_edge_flag',
     'weight_a','weight_b','fair_prob_a','fair_prob_b','divergence_pp',
   ]));
+
+  // coverage_audit.csv: agregado por (família, status)
+  const covAgg = new Map();
+  for (const row of predictionsRows) {
+    const k = `${row.family}|${row.coverage_status}|${row.odd_kind}`;
+    if (!covAgg.has(k)) covAgg.set(k, { family: row.family, coverage_status: row.coverage_status, odd_kind: row.odd_kind, count: 0, examples: [] });
+    const e = covAgg.get(k);
+    e.count++;
+    if (e.examples.length < 3) e.examples.push(row.market_key);
+  }
+  fs.writeFileSync(resolve(OUT, 'coverage_audit.csv'), toCsv(
+    [...covAgg.values()].sort((a,b)=> a.family.localeCompare(b.family) || b.count - a.count).map(e => ({ ...e, examples: e.examples.join(';') })),
+    ['family','coverage_status','odd_kind','count','examples']
+  ));
 
   fs.writeFileSync(resolve(OUT, 'ev_ranked.csv'), toCsv(
     ev_ranked.map((k, i) => ({ rank: i + 1, market_key: k })),
@@ -220,9 +311,21 @@ async function main() {
     slots_count: combined.length,
     ev_ranked_count: ev_ranked.length,
     ev_capped_out_count: ev_ranked_capped_out.length,
-    engine_b: { available: bOut.available, reason: bOut.reason ?? null, version: bOut.version },
-    odds_source: SYNTHETIC_ODDS ? 'synthetic_fair_x1.05_margin_5pct' : 'none',
-    odds_disclaimer: SYNTHETIC_ODDS ? 'Odds são sintéticas (1/fair_prob × 1.05). NÃO refletem mercado real. edge_pct será sempre ~-4.76% por construção. Use AUDIT_SYNTHETIC_ODDS=0 para desabilitar.' : null,
+    engine_b: { available: bOut.available, reason: bOut.reason ?? null, version: bOut.version, slots_count: bOut.available ? bOut.slots.length : 0 },
+    superbet: {
+      odds_total: sbRows.length,
+      mercados_distintos: superbetMarkets.size,
+      mercados_lista: [...superbetMarkets].sort(),
+      slots_with_real_odd: realCount,
+      slots_mapped_but_no_market: mappedNotOffered,
+      slots_unmapped_in_catalog: unmapped,
+    },
+    odds_policy: SYNTHETIC_ODDS
+      ? 'real_superbet_when_available_else_synthetic_fair_x1.05'
+      : 'real_superbet_only',
+    odds_disclaimer: SYNTHETIC_ODDS
+      ? 'Slots sem odd Superbet receberam fallback sintético (1/fair_prob × 1.05). Isso preenche edge_pct para teste de pipeline mas NÃO reflete preço real. Marcado em odd_kind=synthetic.'
+      : 'Apenas odds REAIS Superbet usadas. Slots sem mercado ficam com market_odd=null e edge_pct=null. Use AUDIT_SYNTHETIC_ODDS=1 para preencher gaps com sintético.',
     signature: sig,
     scout_summary: scout.summary,
     scout_notes: scout.notes,
