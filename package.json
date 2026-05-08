@@ -1,0 +1,37 @@
+{
+  "name": "scoutcore-quant",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Motor quantitativo de predição para futebol — engine A (Poisson) + engine B (XGB/LGBM) + curinga calibrado",
+  "license": "UNLICENSED",
+  "author": "RGMV-Automacao",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "node --watch apps/api/src/index.mjs",
+    "start:api": "node apps/api/src/index.mjs",
+    "setup:copy-legacy": "node scripts/setup-copy-legacy.mjs",
+    "setup:wipe-state": "node scripts/setup-wipe-state.mjs",
+    "setup:migrate": "node scripts/setup-migrate.mjs",
+    "setup:replay": "node apps/jobs/src/replay-bootstrap.mjs",
+    "job:settlement": "node apps/jobs/src/settlement.mjs",
+    "job:sync-check": "node apps/jobs/src/sync-check.mjs",
+    "test": "node --test packages/*/test/*.test.mjs apps/*/test/*.test.mjs",
+    "lint": "eslint . --ext .mjs,.cjs,.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.0.0",
+    "pino": "^9.5.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.13.0"
+  }
+}
