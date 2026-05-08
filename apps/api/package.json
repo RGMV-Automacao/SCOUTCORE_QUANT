@@ -15,6 +15,7 @@
     "@scoutcore/engine-b-bridge": "*",
     "@scoutcore/curinga": "*",
     "@scoutcore/evidence": "*",
-    "@scoutcore/isotonic": "*"
+    "@scoutcore/isotonic": "*",
+    "@scoutcore/quality-gates": "*"
   }
 }

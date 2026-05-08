@@ -7,6 +7,7 @@ import { predict as predictA, coveredFamilies } from '@scoutcore/engine-a';
 import { combine } from '@scoutcore/curinga';
 import { buildEvidence } from '@scoutcore/evidence';
 import * as engineB from '@scoutcore/engine-b-bridge';
+import * as QG from '@scoutcore/quality-gates';
 import { buildSignature } from './engine-signature.mjs';
 
 function inferTemporada(dateIso) {
@@ -63,8 +64,9 @@ export function registerPredict(app, { repo }) {
     const combined = combine({ slotsA: aOut.slots, slotsB });
     const tCms = Date.now() - tC;
 
-    // 5. Evidence + odds annotation
+    // 5. Evidence + odds annotation + Quality-Gates
     const odds = r.odds_snapshot ?? {};
+    const qgGates = QG.getGates();
     for (const s of combined) {
       // certify = engine certified AND inputs OK
       s.certified = s.certified && certifiedInputs;
@@ -73,7 +75,19 @@ export function registerPredict(app, { repo }) {
         s.market_odd = mo;
         s.edge_pct = +((s.fair_prob * mo - 1) * 100).toFixed(2);
       }
-      s.confidence = certifiedInputs ? 0.5 : 0.2;  // placeholder honesto até ter EWMA real
+      // Confidence vinda do quality-gates legacy (calibração walk-forward).
+      // Base 0.5 (placeholder até EWMA real entrar) modulada pelo QG: cm * demote * promote.
+      const qgEval = QG.evaluateSlot(s, { liga: m.liga });
+      const baseConfidence = certifiedInputs ? 0.5 : 0.2;
+      s.confidence = +(baseConfidence * qgEval.qg_confidence).toFixed(4);
+      s.provenance = { ...(s.provenance ?? {}), qg: qgEval };
+
+      // Phantom edge flag (gate do QG): edge muito alto = sinal de erro.
+      if (s.edge_pct != null && qgGates.phantom_edge_threshold_pp != null) {
+        if (s.edge_pct >= qgGates.phantom_edge_threshold_pp) {
+          s.provenance.phantom_edge_flag = true;
+        }
+      }
       s.evidence = buildEvidence(s, { home: m.home, away: m.away, liga: m.liga });
     }
 

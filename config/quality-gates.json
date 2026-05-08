@@ -1,0 +1,259 @@
+{
+  "version": 1,
+  "gates": {
+    "ev_min_pct": 3.0,
+    "edge_min_pp": 2.0,
+    "leg_ev_positive": true,
+    "odd_combined_min": 2.50,
+    "odd_combined_max": 3.50,
+    "odd_combined_ideal": 2.70,
+    "odd_combined_sub25_flag": true,
+    "odd_combined_sub25_floor": 2.50,
+    "sample_min": 5,
+    "phantom_edge_threshold_pp": 15,
+    "prob_model_min": 0.30,
+    "max_odds_drift_pct": 15
+  },
+  "scoring": {
+    "weights": {
+      "ev_pct": 0.35,
+      "edge_pp": 0.25,
+      "sample_size": 0.15,
+      "recent_form": 0.15,
+      "model_confidence": 0.10
+    },
+    "tiers": {
+      "A": { "min_score": 75, "label": "Elite — alto EV + dados robustos" },
+      "B": { "min_score": 55, "label": "Sólido — EV positivo com suporte" },
+      "C": { "min_score": 40, "label": "Marginal — EV apertado ou dados rasos" },
+      "D": { "min_score": 0,  "label": "Descartado — abaixo dos gates" }
+    }
+  },
+  "bankroll": {
+    "unit_pct": 2.0,
+    "max_exposure_pct": 12.0,
+    "max_exposure_stoploss_70": 8.0,
+    "max_exposure_stoploss_50": 6.0,
+    "stake_multipla_brl": 3.0,
+    "stake_individual_brl": 2.0,
+    "combos_per_board": 12,
+    "confrontos_per_combo": 4,
+    "meta_brl": 5000,
+    "stake_mode": "fixed",
+    "kelly_fraction": 0.333,
+    "kelly_min_stake_brl": 2,
+    "kelly_max_pct": 5,
+    "max_per_league": 4,
+    "circuit_breaker_red_days": 5
+  },
+  "poisson": {
+    "half_life_games": 8,
+    "lambda_home_clamp": [0.3, 4.0],
+    "lambda_away_clamp": [0.2, 3.5],
+    "grid_size": 8,
+    "min_games_for_calc": 3
+  },
+  "goal_model": {
+    "split_weight": 0.65,
+    "general_weight": 0.35,
+    "split_target_sample": 12,
+    "general_target_sample": 20,
+    "trend_min_games": 3,
+    "trend_recent5_weight": 0.6,
+    "trend_recent3_weight": 0.4,
+    "trend_influence": 0.18,
+    "trend_max_delta_pct": 0.22,
+    "ht_share": 0.45,
+    "reversal_streak_threshold": 5,
+    "reversal_h2h_threshold": 5,
+    "reversal_signal_penalty": 0.018,
+    "reversal_max_penalty": 0.06
+  },
+  "season_blend": {
+    "enabled": true,
+    "current_base_weight": 0.70,
+    "previous_max_weight": 0.30,
+    "current_target_sample": 18
+  },
+  "backtest": {
+    "train_window": 15,
+    "test_window": 5,
+    "min_train_matches": 10,
+    "confidence_level": 0.95
+  },
+  "diversity": {
+    "min_families": 3,
+    "min_team_or_ht_selections": 2,
+    "max_same_family_pct": 40
+  },
+  "products": {
+    "classic": {
+      "min_leg_odd": 1.7,
+      "top_global": 7,
+      "top_per_match": 3
+    },
+    "combo": {
+      "default_legs_min": 2,
+      "default_legs_max": 3,
+      "exception_legs_max": 4,
+      "soft_floor_odd": 2.5,
+      "target_combined_min": 2.5,
+      "target_combined_max": 3.5,
+      "ideal_combined_odd": 2.7
+    }
+  },
+  "market_ranking": {
+    "demote": {
+      "1º Tempo - Total de Gols": {
+        "priority_delta": -18,
+        "safety_delta": -3,
+        "reason": "Walk-forward global 2026-04-11: ROI -37.2%"
+      },
+      "Total de Gols da Equipe": {
+        "priority_delta": -14,
+        "safety_delta": -2,
+        "reason": "Walk-forward global 2026-04-11: ROI -31.6%"
+      },
+      "1º Tempo - Total de Gols do Time": {
+        "priority_delta": -22,
+        "safety_delta": -4,
+        "reason": "Walk-forward global 2026-04-11: ROI -73.6%"
+      },
+      "Handicap": {
+        "priority_delta": -26,
+        "safety_delta": -4,
+        "reason": "Reativado 2026-04-28 para recalibração no MOTOR; histórico antigo indicava viés de zebra."
+      },
+      "1º Tempo - Handicap": {
+        "priority_delta": -28,
+        "safety_delta": -4,
+        "reason": "Reativado 2026-04-28 para recalibração no MOTOR; entra com confiança conservadora."
+      },
+      "Cartões - Handicap": {
+        "priority_delta": -20,
+        "safety_delta": -3,
+        "reason": "Novo no MOTOR 2026-04-28; mercado de cartões tem ruído alto e requer calibração."
+      },
+      "1º Tempo - Handicap de Cartões": {
+        "priority_delta": -24,
+        "safety_delta": -4,
+        "reason": "Novo no MOTOR 2026-04-28; amostra HT menor, manter conservador até feedback."
+      }
+    },
+    "promote": {
+      "Total de Faltas": {
+        "priority_delta": 16,
+        "safety_delta": 5,
+        "min_sample": 8,
+        "allowed_leagues": ["brasileirao", "serie-a", "superliga-argentina"],
+        "reason": "Walk-forward 2026-04-11: ROI positivo com amostra útil."
+      },
+      "Escanteios - Handicap": {
+        "priority_delta": 12,
+        "safety_delta": 3,
+        "min_sample": 8,
+        "allowed_leagues": ["bundesliga", "la-liga", "la-liga-2", "ligue-1", "serie-a", "serie-b-italia"],
+        "reason": "Walk-forward 2026-04-11: ROI positivo com amostra útil."
+      }
+    }
+  },
+  "ht_line_bounds": {
+    "finalizacoes_equipe": { "min": 3.5, "max": 8.5 },
+    "escanteios_equipe": { "min": 0.5, "max": 4.5 },
+    "chutes_no_gol_equipe": { "min": 0.5, "max": 3.5 }
+  },
+  "confidence_multipliers": {
+    "_comment": "Conservative calibration 2026-04-12.",
+    "corners_total": 0.82,
+    "corners_team": 0.80,
+    "corners_handicap": 0.82,
+    "corners_ht": 0.80,
+    "corners_team_ht": 0.78,
+    "corners_ht_comparison": 0.80,
+    "cards_audited": 0.88,
+    "cards_unaudited": 0.82,
+    "cards_handicap": 0.76,
+    "cards_ht_handicap": 0.72,
+    "sot": 0.82,
+    "shots": 0.78,
+    "fouls_audited": 0.88,
+    "fouls_unaudited": 0.84,
+    "ht_goals": 0.90,
+    "ht_goals_team": 0.88,
+    "goals_handicap": 0.72,
+    "goals_ht_handicap": 0.70,
+    "ht_handicap": 0.87
+  },
+  "phantom_ev": {
+    "cap_pct": 80,
+    "soft_cap_pct": 50,
+    "penalty_factor": 0.60
+  },
+  "team_profile_blend": {
+    "weight": 0.15,
+    "min_profile_games": 10
+  },
+  "family_cap": {
+    "escanteios": 5,
+    "gols": 6,
+    "ht-gols": 4,
+    "chutes": 3,
+    "finalizacoes": 3,
+    "cartoes": 3,
+    "faltas": 3,
+    "resultado": 4,
+    "btts": 2,
+    "_default": 5
+  },
+  "penalties": {
+    "brasileirao_over_btts": 8
+  },
+  "referee": {
+    "min_games": 8,
+    "blend_team_weight": 0.60,
+    "blend_ref_weight": 0.40
+  },
+  "intensity": {
+    "zscore_high": 1.5,
+    "zscore_low": -1.0,
+    "lambda_adjustment_max": 0.06
+  },
+  "importance": {
+    "title_boost": 0.06,
+    "relegation_boost": 0.05,
+    "mid_table_penalty": -0.03,
+    "gap_threshold": 6
+  },
+  "_TEST_MODE": {
+    "active": false,
+    "ativado_em": "2026-04-23",
+    "desativado_em": "2026-05-03",
+    "motivo": "Fase de testes concluída — guardrails reativados para operação com capital real (auditoria SOX 2026-05-03)",
+    "golive_checklist": {
+      "1_guardrails_enabled": "✅ guardrails.enabled → true",
+      "2_consecutive_reds": "✅ guardrails.max_consecutive_reds → 5 (kill-switch após 5 REDs seguidos)",
+      "3_daily_stake_cap": "✅ guardrails.max_stake_per_day_brl → 60 (ajustar conforme banca operacional)",
+      "4_stake_per_combo": "✅ guardrails.max_stake_per_combo_brl → 5",
+      "5_drawdown_cap": "✅ guardrails.max_drawdown_day_pct → 20 (stop-loss 20% diário)",
+      "6_price_drift_cap": "✅ guardrails.price_drift_max_pct → 8",
+      "7_drift_monitor": "✅ drift_monitor.enabled → true (já estava true)",
+      "nota": "price_drift_max_pct acima de 100 desativa a checagem de drift (valor impossível de atingir)"
+    }
+  },
+  "guardrails": {
+    "enabled": true,
+    "max_stake_per_combo_brl": 5,
+    "max_stake_per_day_brl": 60,
+    "max_consecutive_reds": 5,
+    "max_drawdown_day_pct": 20,
+    "price_drift_max_pct": 8
+  },
+  "drift_monitor": {
+    "enabled": true,
+    "window_days": 7,
+    "brier_delta_warn": 0.05,
+    "roi_negative_days_warn": 2,
+    "scrape_rate_warn": 0.70,
+    "min_legs_for_brier": 10
+  }
+}
