@@ -1,0 +1,1 @@
+﻿# SCOUTCORE_QUANT
