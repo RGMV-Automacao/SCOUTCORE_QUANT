@@ -1,0 +1,9 @@
+{
+  "name": "@scoutcore/data-access",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.mjs",
+  "exports": { ".": "./src/index.mjs" },
+  "dependencies": { "better-sqlite3": "^11.3.0" }
+}

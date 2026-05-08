@@ -29,8 +29,12 @@ for (const f of files) {
   }
   console.log(`[migrate]   ${f}: aplicando...`);
   const sql = readFileSync(join(MIGRATIONS_DIR, f), 'utf8');
-  db.exec(sql);
-  console.log(`[migrate]   ${f}: OK`);
+  const tx = db.transaction(() => {
+    db.exec(sql);
+    db.prepare('INSERT OR REPLACE INTO schema_version(version) VALUES (?)').run(version);
+  });
+  tx();
+  console.log(`[migrate]   ${f}: OK (v${version})`);
 }
 
 db.close();

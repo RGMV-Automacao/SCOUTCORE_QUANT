@@ -7,6 +7,14 @@
   "dependencies": {
     "fastify": "^5.0.0",
     "dotenv": "^16.4.5",
-    "better-sqlite3": "^11.3.0"
+    "better-sqlite3": "^11.3.0",
+    "@scoutcore/contracts": "*",
+    "@scoutcore/markets": "*",
+    "@scoutcore/data-access": "*",
+    "@scoutcore/engine-a": "*",
+    "@scoutcore/engine-b-bridge": "*",
+    "@scoutcore/curinga": "*",
+    "@scoutcore/evidence": "*",
+    "@scoutcore/isotonic": "*"
   }
 }
