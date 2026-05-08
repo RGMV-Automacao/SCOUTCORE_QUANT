@@ -40,6 +40,18 @@ export function registerPredict(app, { repo }) {
 
     const certifiedInputs = !!profileHome && !!profileAway && !!priorsFt;
 
+    // Carrega calib EWMA ANTES da engine para extrair lambda_mult por count family.
+    const calibMap = loadCalibrationMap(repo.db, 'A');
+    const COUNT_FAMILIES = ['escanteios', 'chutes', 'cartoes', 'faltas'];
+    const engineCalib = {};
+    for (const fam of COUNT_FAMILIES) {
+      // Usa direction='over' como key canônica (lambda_mult é simétrico).
+      const c = getCalib(calibMap, { family: fam, direction: 'over', liga: m.liga });
+      if (c.sample_size > 0 && c.lambda_mult !== 1.0) {
+        engineCalib[fam] = { lambda_mult: c.lambda_mult, sample_size: c.sample_size };
+      }
+    }
+
     // 2. Engine A
     const tA = Date.now();
     const aOut = predictA({
@@ -47,6 +59,7 @@ export function registerPredict(app, { repo }) {
       profileHome: profileHome ?? {},
       profileAway: profileAway ?? {},
       priors: priorsFt ?? {},
+      calibration: engineCalib,
     });
     const tAms = Date.now() - tA;
 
@@ -68,7 +81,6 @@ export function registerPredict(app, { repo }) {
     // 5. Evidence + odds annotation + Quality-Gates + Calibration EWMA
     const odds = r.odds_snapshot ?? {};
     const qgGates = QG.getGates();
-    const calibMap = loadCalibrationMap(repo.db, 'A');
     for (const s of combined) {
       // certify = engine certified AND inputs OK
       s.certified = s.certified && certifiedInputs;
@@ -96,11 +108,19 @@ export function registerPredict(app, { repo }) {
       s.evidence = buildEvidence(s, { home: m.home, away: m.away, liga: m.liga });
     }
 
-    // 6. EV ranking
+    // 6. EV ranking — score = edge_pct ajustado por confidence.
+    //    Slots com phantom_edge_flag são rebaixados (peso 0.3).
+    //    O `confidence` já carrega QG demote/promote + calib EWMA, então o
+    //    ranking final reflete naturalmente a leitura calibrada.
     const ev_ranked = combined
       .filter((s) => s.market_odd != null && s.edge_pct != null)
-      .sort((a, b) => (b.edge_pct ?? 0) - (a.edge_pct ?? 0))
-      .map((s) => s.market_key);
+      .map((s) => {
+        const phantomPenalty = s.provenance?.phantom_edge_flag ? 0.3 : 1.0;
+        const score = (s.edge_pct ?? 0) * (s.confidence ?? 0.5) * phantomPenalty;
+        return { market_key: s.market_key, score, edge_pct: s.edge_pct, confidence: s.confidence };
+      })
+      .sort((a, b) => b.score - a.score)
+      .map((x) => x.market_key);
 
     const sig = buildSignature();
     const response = {

@@ -21,7 +21,7 @@
 import { listMarkets, MARKETS_VERSION } from '@scoutcore/markets';
 import { scoreMatrix, poissonPMF } from './poisson.mjs';
 
-export const ENGINE_A_VERSION = '0.2.0';
+export const ENGINE_A_VERSION = '0.3.0';
 
 const HT_SCALE_GOLS = 0.40;        // share típico de gols 1T
 const RHO_DC   = -0.05;
@@ -173,8 +173,11 @@ function resolveCountLambdas({ profileHome, profileAway, priors, key, leagueTota
   };
 }
 
-/** Slots Poisson para uma família contagem. */
-function predictCountFamily({ family, profileKey, leagueTotalKey, profileHome, profileAway, priors }) {
+/** Slots Poisson para uma família contagem.
+ *  `lambdaMult` opcional vem da calibração EWMA (settler) e é aplicado
+ *  ao lambda ANTES do cálculo de probabilidade. Simétrico para over/under
+ *  por design: lambda é propriedade da contagem, não da direção. */
+function predictCountFamily({ family, profileKey, leagueTotalKey, profileHome, profileAway, priors, lambdaMult = 1.0 }) {
   const out = [];
   const lambdas = resolveCountLambdas({
     profileHome, profileAway, priors, key: profileKey, leagueTotalKey,
@@ -189,17 +192,20 @@ function predictCountFamily({ family, profileKey, leagueTotalKey, profileHome, p
     return out;
   }
 
-  const lambdaTotalFT = lambdas.lambdaHome + lambdas.lambdaAway;
+  const lambdaTotalFT = (lambdas.lambdaHome + lambdas.lambdaAway) * lambdaMult;
   const htShare = HT_SHARE[family] ?? 0.4;
-  const lambdaHomeHT = lambdas.lambdaHome * htShare;
-  const lambdaAwayHT = lambdas.lambdaAway * htShare;
+  const lambdaHomeHT = lambdas.lambdaHome * lambdaMult * htShare;
+  const lambdaAwayHT = lambdas.lambdaAway * lambdaMult * htShare;
   const lambdaTotalHT = lambdaTotalFT * htShare;
+  const lambdaHomeFT = lambdas.lambdaHome * lambdaMult;
+  const lambdaAwayFT = lambdas.lambdaAway * lambdaMult;
 
   const provBase = {
     engine: 'A',
     family,
     lambda_home: lambdas.lambdaHome,
     lambda_away: lambdas.lambdaAway,
+    lambda_mult: lambdaMult,
     n_events_home: lambdas.n_events_home,
     n_events_away: lambdas.n_events_away,
     used: lambdas.used,
@@ -211,8 +217,8 @@ function predictCountFamily({ family, profileKey, leagueTotalKey, profileHome, p
     let lambda;
     if (m.period === 'FT') {
       if (m.scope === 'total') lambda = lambdaTotalFT;
-      else if (m.scope === 'home') lambda = lambdas.lambdaHome;
-      else if (m.scope === 'away') lambda = lambdas.lambdaAway;
+      else if (m.scope === 'home') lambda = lambdaHomeFT;
+      else if (m.scope === 'away') lambda = lambdaAwayFT;
     } else if (m.period === 'HT') {
       if (m.scope === 'total') lambda = lambdaTotalHT;
       else if (m.scope === 'home') lambda = lambdaHomeHT;
@@ -233,11 +239,21 @@ function predictCountFamily({ family, profileKey, leagueTotalKey, profileHome, p
 
 /**
  * Predict do Engine A.
+ *
+ * @param {object} ctx
+ * @param {object} [ctx.calibration] — opcional. Map de calibração por família
+ *   contagem: { escanteios?: { lambda_mult: number }, chutes?, cartoes?, faltas? }.
+ *   Quando ausente, lambda_mult=1.0 (no-op). Aplicado APENAS em count families;
+ *   gols/btts/1x2 (matrix conjunta) não recebem lambda assimétrico para preservar
+ *   coerência sim/nao e home/draw/away.
  */
 export function predict(ctx) {
   const { lambdaHome, lambdaAway, inputs } = computeLambdas(ctx);
   const matrixFT = scoreMatrix(lambdaHome, lambdaAway, { maxGoals: MAX_GOALS, rho: RHO_DC });
   const matrixHT = scoreMatrix(lambdaHome * HT_SCALE_GOLS, lambdaAway * HT_SCALE_GOLS, { maxGoals: MAX_GOALS, rho: RHO_DC });
+
+  const calib = ctx.calibration ?? {};
+  const lm = (family) => Number(calib[family]?.lambda_mult ?? 1.0);
 
   const slots = [];
   const provBaseGoals = {
@@ -298,6 +314,7 @@ export function predict(ctx) {
     profileHome: ctx.profileHome,
     profileAway: ctx.profileAway,
     priors: ctx.priors,
+    lambdaMult: lm('escanteios'),
   }));
 
   // CHUTES — total/home/away FT
@@ -308,6 +325,7 @@ export function predict(ctx) {
     profileHome: ctx.profileHome,
     profileAway: ctx.profileAway,
     priors: ctx.priors,
+    lambdaMult: lm('chutes'),
   }));
 
   // CARTOES — total/home/away FT (low confidence)
@@ -319,6 +337,7 @@ export function predict(ctx) {
     profileHome: ctx.profileHome,
     profileAway: ctx.profileAway,
     priors: ctx.priors,
+    lambdaMult: lm('cartoes'),
   }));
 
   // FALTAS — total FT (low confidence)
@@ -329,6 +348,7 @@ export function predict(ctx) {
     profileHome: ctx.profileHome,
     profileAway: ctx.profileAway,
     priors: ctx.priors,
+    lambdaMult: lm('faltas'),
   }));
 
   return {

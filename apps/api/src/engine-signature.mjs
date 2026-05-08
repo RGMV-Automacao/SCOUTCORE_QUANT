@@ -9,7 +9,7 @@ import { EVIDENCE_VERSION } from '@scoutcore/evidence';
 import { QG_VERSION } from '@scoutcore/quality-gates';
 import { CALIBRATION_VERSION } from '@scoutcore/calibration';
 
-export const MOTOR_VERSION = '0.4.0';
+export const MOTOR_VERSION = '0.5.0';
 
 export function buildSignature({ calibSnapshotId = null } = {}) {
   const sig = {
