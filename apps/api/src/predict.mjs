@@ -8,6 +8,7 @@ import { combine } from '@scoutcore/curinga';
 import { buildEvidence } from '@scoutcore/evidence';
 import * as engineB from '@scoutcore/engine-b-bridge';
 import * as QG from '@scoutcore/quality-gates';
+import { loadCalibrationMap, getCalib, applyCalibrationToSlot, CALIBRATION_VERSION } from '@scoutcore/calibration';
 import { buildSignature } from './engine-signature.mjs';
 
 function inferTemporada(dateIso) {
@@ -64,9 +65,10 @@ export function registerPredict(app, { repo }) {
     const combined = combine({ slotsA: aOut.slots, slotsB });
     const tCms = Date.now() - tC;
 
-    // 5. Evidence + odds annotation + Quality-Gates
+    // 5. Evidence + odds annotation + Quality-Gates + Calibration EWMA
     const odds = r.odds_snapshot ?? {};
     const qgGates = QG.getGates();
+    const calibMap = loadCalibrationMap(repo.db, 'A');
     for (const s of combined) {
       // certify = engine certified AND inputs OK
       s.certified = s.certified && certifiedInputs;
@@ -75,12 +77,15 @@ export function registerPredict(app, { repo }) {
         s.market_odd = mo;
         s.edge_pct = +((s.fair_prob * mo - 1) * 100).toFixed(2);
       }
-      // Confidence vinda do quality-gates legacy (calibração walk-forward).
-      // Base 0.5 (placeholder até EWMA real entrar) modulada pelo QG: cm * demote * promote.
+      // Confidence: base 0.5 (placeholder) × QG (multiplicadores walk-forward)
       const qgEval = QG.evaluateSlot(s, { liga: m.liga });
       const baseConfidence = certifiedInputs ? 0.5 : 0.2;
       s.confidence = +(baseConfidence * qgEval.qg_confidence).toFixed(4);
       s.provenance = { ...(s.provenance ?? {}), qg: qgEval };
+
+      // Calibração EWMA (do settler, se houver amostras suficientes).
+      const calib = getCalib(calibMap, { family: s.family, direction: s.direction, liga: m.liga });
+      applyCalibrationToSlot(s, calib);
 
       // Phantom edge flag (gate do QG): edge muito alto = sinal de erro.
       if (s.edge_pct != null && qgGates.phantom_edge_threshold_pp != null) {
@@ -119,10 +124,11 @@ export function registerPredict(app, { repo }) {
       },
     };
 
-    // 7. Persist motor_run (best-effort)
+    // 7. Persist motor_run + predictions (best-effort)
+    const run_id = randomUUID();
     try {
       repo.saveMotorRun({
-        run_id: randomUUID(),
+        run_id,
         match_id: m.external_id,
         engine_signature: sig,
         request_payload: r,
@@ -131,6 +137,20 @@ export function registerPredict(app, { repo }) {
     } catch (e) {
       app.log.warn({ err: e.message }, 'saveMotorRun_failed');
     }
+    try {
+      if (typeof repo.savePredictions === 'function') {
+        repo.savePredictions({
+          run_id,
+          match_id: m.external_id,
+          match_date: m.date,
+          liga: m.liga,
+          slots: combined,
+        });
+      }
+    } catch (e) {
+      app.log.warn({ err: e.message }, 'savePredictions_failed');
+    }
+    response.run_id = run_id;
 
     // 8. Validação saída (defensiva — caro mas catch dev errors)
     const outValid = PredictionResponseZ.safeParse(response);

@@ -7,8 +7,9 @@ import { ENGINE_B_VERSION } from '@scoutcore/engine-b-bridge';
 import { MARKETS_VERSION } from '@scoutcore/markets';
 import { EVIDENCE_VERSION } from '@scoutcore/evidence';
 import { QG_VERSION } from '@scoutcore/quality-gates';
+import { CALIBRATION_VERSION } from '@scoutcore/calibration';
 
-export const MOTOR_VERSION = '0.3.0';
+export const MOTOR_VERSION = '0.4.0';
 
 export function buildSignature({ calibSnapshotId = null } = {}) {
   const sig = {
@@ -20,6 +21,7 @@ export function buildSignature({ calibSnapshotId = null } = {}) {
     isotonic_version: null,
     calib_snapshot_id: calibSnapshotId,
     quality_gates_version: QG_VERSION,
+    calibration_version: CALIBRATION_VERSION,
     markets_catalog_version: MARKETS_VERSION,
     data_snapshot_hash: null,
   };

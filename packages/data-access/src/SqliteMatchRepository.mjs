@@ -76,7 +76,7 @@ export class SqliteMatchRepository {
          ORDER BY date(as_of) DESC LIMIT 1`),
 
       getCalib: this.db.prepare(`
-        SELECT * FROM calib_state WHERE engine = ? AND family = ? AND liga = ?`),
+        SELECT * FROM calib_state WHERE engine = ? AND family = ? AND direction = ? AND liga = ?`),
 
       upsertTeamProfileV2: this.db.prepare(`
         INSERT INTO team_profile_v2(team, liga, temporada, side, as_of, n, payload, updated_at)
@@ -89,10 +89,10 @@ export class SqliteMatchRepository {
         VALUES (?, ?, ?, ?, ?)`),
 
       upsertCalib: this.db.prepare(`
-        INSERT INTO calib_state(engine, family, liga, ewma_hr, ewma_brier, clv_score,
+        INSERT INTO calib_state(engine, family, direction, liga, ewma_hr, ewma_brier, clv_score,
                                 isotonic_blob, isotonic_version, sample_size, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-        ON CONFLICT(engine, family, liga) DO UPDATE SET
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(engine, family, direction, liga) DO UPDATE SET
           ewma_hr = excluded.ewma_hr,
           ewma_brier = excluded.ewma_brier,
           clv_score = excluded.clv_score,
@@ -112,6 +112,12 @@ export class SqliteMatchRepository {
          WHERE liga = ? AND temporada = ? AND period = ?
            AND date(as_of) <= date(?)
          ORDER BY date(as_of) DESC LIMIT 1`),
+
+      insertPrediction: this.db.prepare(`
+        INSERT OR IGNORE INTO prediction
+          (run_id, match_id, match_date, liga, family, scope, period, direction,
+           line, market_key, fair_prob, market_odd, edge_pct, confidence, certified, provenance)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
     };
   }
 
@@ -207,6 +213,30 @@ export class SqliteMatchRepository {
       JSON.stringify(request_payload),
       JSON.stringify(response_payload),
     );
+  }
+
+  /**
+   * Persiste lista de slots como rows em `prediction`. Idempotente por (run_id, market_key).
+   */
+  savePredictions({ run_id, match_id, match_date, liga, slots }) {
+    const tx = this.db.transaction((rows) => {
+      for (const s of rows) {
+        this.s.insertPrediction.run(
+          run_id, match_id, match_date, liga,
+          s.family, s.scope, s.period, s.direction,
+          s.line ?? null,
+          s.market_key,
+          s.fair_prob ?? 0,
+          s.market_odd ?? null,
+          s.edge_pct ?? null,
+          s.confidence ?? 0,
+          s.certified ? 1 : 0,
+          s.provenance ? JSON.stringify(s.provenance) : null,
+        );
+      }
+    });
+    tx(slots);
+    return slots.length;
   }
 
   close() { this.db.close(); }
