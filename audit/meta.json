@@ -10,9 +10,9 @@
   "warnings": [
     "league_priors_missing:brasileirao"
   ],
-  "slots_count": 131,
-  "ev_ranked_count": 18,
-  "ev_capped_out_count": 49,
+  "slots_count": 561,
+  "ev_ranked_count": 82,
+  "ev_capped_out_count": 120,
   "engine_b": {
     "available": true,
     "reason": null,
@@ -541,15 +541,15 @@
       "Último Gol",
       "Último escanteio"
     ],
-    "slots_with_real_odd": 67,
-    "slots_mapped_but_no_market": 36,
-    "slots_unmapped_in_catalog": 28
+    "slots_with_real_odd": 202,
+    "slots_mapped_but_no_market": 354,
+    "slots_unmapped_in_catalog": 5
   },
   "odds_policy": "real_superbet_only",
   "odds_disclaimer": "Apenas odds REAIS Superbet usadas. Slots sem mercado ficam com market_odd=null e edge_pct=null. Use AUDIT_SYNTHETIC_ODDS=1 para preencher gaps com sintético.",
   "signature": {
     "motor_version": "0.8.0",
-    "model_a_version": "0.3.0",
+    "model_a_version": "0.4.0",
     "model_b_version": "0.2.0-sklearn-gbm",
     "curinga_version": "0.2.0",
     "evidence_version": "0.1.0",
@@ -558,15 +558,15 @@
     "calib_snapshot_id": null,
     "quality_gates_version": "qg-1",
     "calibration_version": "0.1.0",
-    "markets_catalog_version": "1.0.0",
+    "markets_catalog_version": "1.1.0",
     "data_snapshot_hash": null,
-    "hash": "8a74b775cb5ed8e6"
+    "hash": "d366c9227f486834"
   },
   "scout_summary": "Top pick: escanteios_home_ft_under_3_5 @ 5 (prob=100.0%, edge=400pp, conf=19%) — escanteios/under.",
   "scout_notes": [
     "phantom_edge_detected: revisar odds e lambda",
     "low_confidence_in_top5: 5 pick(s) com confidence<0.4",
-    "family_cap_filtered: 49 mercado(s) excluído(s) do topo"
+    "family_cap_filtered: 120 mercado(s) excluído(s) do topo"
   ],
-  "generated_at": "2026-05-08T13:07:11.741Z"
+  "generated_at": "2026-05-08T14:40:16.909Z"
 }

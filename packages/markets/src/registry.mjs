@@ -182,9 +182,9 @@ reg({ key: 'escanteios_exato_total_ft_15_plus', family: 'escanteios_exato', scop
 // ─────────────────────────────────────────────
 // CHUTES (todos) — total/home/away FT + HT
 // ─────────────────────────────────────────────
-regOverUnder({ family: 'chutes', scope: 'total', period: 'FT', lines: [9.5, 11.5, 13.5, 15.5, 17.5, 19.5, 21.5, 23.5] });
-regOverUnder({ family: 'chutes', scope: 'home',  period: 'FT', lines: [4.5, 6.5, 8.5, 10.5, 12.5] });
-regOverUnder({ family: 'chutes', scope: 'away',  period: 'FT', lines: [4.5, 6.5, 8.5, 10.5, 12.5] });
+regOverUnder({ family: 'chutes', scope: 'total', period: 'FT', lines: [9.5, 11.5, 13.5, 15.5, 17.5, 19.5, 21.5, 23.5, 24.5, 25.5, 26.5, 27.5, 28.5, 29.5, 30.5] });
+regOverUnder({ family: 'chutes', scope: 'home',  period: 'FT', lines: [4.5, 6.5, 8.5, 10.5, 12.5, 13.5, 14.5, 15.5] });
+regOverUnder({ family: 'chutes', scope: 'away',  period: 'FT', lines: [4.5, 6.5, 8.5, 10.5, 12.5, 13.5, 14.5, 15.5] });
 regOverUnder({ family: 'chutes', scope: 'total', period: 'HT', lines: [4.5, 5.5, 6.5, 7.5, 8.5] });
 regOverUnder({ family: 'chutes', scope: 'home',  period: 'HT', lines: [2.5, 3.5, 4.5, 5.5] });
 regOverUnder({ family: 'chutes', scope: 'away',  period: 'HT', lines: [2.5, 3.5, 4.5, 5.5] });
