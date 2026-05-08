@@ -1,0 +1,6 @@
+rank,market_key,family,direction,line,fair_prob,market_odd,edge_pct,confidence,certified,isotonic_applied,calib_applied,phantom
+1,escanteios_home_ft_under_3_5,escanteios,under,3.5,1,1.693,69.3,0.192,false,true,true,true
+2,escanteios_home_ht_under_1_5,escanteios,under,1.5,1,1.685,68.5,0.1872,false,true,true,true
+3,escanteios_away_ht_under_1_5,escanteios,under,1.5,1,1.461,46.1,0.1872,false,true,true,true
+4,escanteios_total_ft_under_9_5,escanteios,under,9.5,1,1.117,11.7,0.1968,false,true,true,false
+5,escanteios_away_ft_under_3_5,escanteios,under,3.5,1,1.383,38.3,0.192,false,true,true,true

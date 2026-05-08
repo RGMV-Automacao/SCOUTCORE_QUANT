@@ -95,6 +95,7 @@ export const PredictionResponseZ = z.object({
   warnings: z.array(z.string()).default([]),
   slots: z.array(SlotZ),
   ev_ranked: z.array(z.string()).default([]),
+  ev_ranked_capped_out: z.array(z.string()).default([]),
   scout: z.unknown().nullable().default(null),
   diagnostics: z.object({
     latency_ms: z.number().int().nonnegative(),

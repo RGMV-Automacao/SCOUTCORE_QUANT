@@ -6,6 +6,9 @@
 //
 // Sem dependências externas. Determinístico.
 
+export const ISOTONIC_VERSION = '1.0.0';
+export const MIN_SAMPLES = 20; // mínimo para considerar o modelo confiável
+
 /**
  * @param {number[]} probs  predições brutas em [0,1]
  * @param {Array<0|1>} outcomes  outcome binário alinhado
@@ -82,4 +85,83 @@ export function serialize(model) { return JSON.stringify(model); }
 export function deserialize(json) {
   if (typeof json !== 'string' || !json) return null;
   try { return JSON.parse(json); } catch { return null; }
+}
+
+/** Chave canônica de blob por (family, direction, liga). */
+export function isoKey({ family, direction, liga }) {
+  return `${family}::${direction}::${liga ?? '*'}`;
+}
+
+/**
+ * Carrega todos os modelos isotônicos do DB em um Map keyed por isoKey.
+ * Tolera ausência da tabela (retorna Map vazio).
+ */
+export function loadIsotonicMap(db) {
+  const map = new Map();
+  try {
+    const rows = db.prepare(
+      'SELECT family, direction, liga, blob_bytes, n_samples, fit_at FROM isotonic_blob'
+    ).all();
+    for (const r of rows) {
+      const blob = typeof r.blob_bytes === 'string'
+        ? r.blob_bytes
+        : (r.blob_bytes ? Buffer.from(r.blob_bytes).toString('utf8') : null);
+      const model = deserialize(blob);
+      if (!model) continue;
+      map.set(isoKey({ family: r.family, direction: r.direction, liga: r.liga }), {
+        model, n_samples: r.n_samples, fit_at: r.fit_at,
+      });
+    }
+  } catch {
+    // tabela inexistente em dev: silencioso
+  }
+  return map;
+}
+
+/** Resolve modelo: tenta liga específica, depois global ('*'). */
+export function getIsotonic(map, { family, direction, liga }) {
+  const specific = map.get(isoKey({ family, direction, liga }));
+  if (specific && specific.n_samples >= MIN_SAMPLES) return specific;
+  const global = map.get(isoKey({ family, direction, liga: '*' }));
+  if (global && global.n_samples >= MIN_SAMPLES) return global;
+  return null;
+}
+
+/**
+ * Aplica isotônica em slot.fair_prob, gravando provenance.
+ * No-op (com provenance.applied=false) quando modelo não disponível ou amostras insuficientes.
+ */
+export function applyIsotonicToSlot(slot, isoEntry) {
+  slot.provenance = slot.provenance ?? {};
+  if (!isoEntry || !isoEntry.model) {
+    slot.provenance.isotonic = { applied: false, reason: 'no_model' };
+    return;
+  }
+  const pBefore = slot.fair_prob;
+  const pAfter = predict(isoEntry.model, pBefore);
+  slot.fair_prob = +pAfter.toFixed(6);
+  slot.fair_odd = pAfter > 0 ? +(1 / pAfter).toFixed(4) : null;
+  if (slot.market_odd != null) {
+    slot.edge_pct = +((pAfter * slot.market_odd - 1) * 100).toFixed(2);
+  }
+  slot.provenance.isotonic = {
+    applied: true,
+    p_before: pBefore,
+    p_after: slot.fair_prob,
+    n_samples: isoEntry.n_samples,
+    fit_at: isoEntry.fit_at,
+  };
+}
+
+/** Salva (upsert) blob isotônico para uma chave. */
+export function saveIsotonicBlob(db, { family, direction, liga, model, n_samples }) {
+  const blob = serialize(model);
+  db.prepare(
+    `INSERT INTO isotonic_blob (family, direction, liga, blob_bytes, n_samples, fit_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(family, direction, liga) DO UPDATE SET
+       blob_bytes=excluded.blob_bytes,
+       n_samples=excluded.n_samples,
+       fit_at=excluded.fit_at`
+  ).run(family, direction, liga ?? '*', blob, n_samples);
 }

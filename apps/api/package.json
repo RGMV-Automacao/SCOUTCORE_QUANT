@@ -16,6 +16,8 @@
     "@scoutcore/curinga": "*",
     "@scoutcore/evidence": "*",
     "@scoutcore/isotonic": "*",
-    "@scoutcore/quality-gates": "*"
+    "@scoutcore/quality-gates": "*",
+    "@scoutcore/calibration": "*",
+    "@scoutcore/scout": "*"
   }
 }

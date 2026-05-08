@@ -1,0 +1,2 @@
+key,value
+engine_signature,"{""motor_version"":""0.8.0"",""model_a_version"":""0.3.0"",""model_b_version"":""0.2.0-sklearn-gbm"",""curinga_version"":""0.2.0"",""evidence_version"":""0.1.0"",""isotonic_version"":""1.0.0"",""scout_version"":""0.1.0"",""calib_snapshot_id"":null,""quality_gates_version"":""qg-1"",""calibration_version"":""0.1.0"",""markets_catalog_version"":""1.0.0"",""data_snapshot_hash"":null,""hash"":""8a74b775cb5ed8e6""}"

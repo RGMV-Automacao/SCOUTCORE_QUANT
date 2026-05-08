@@ -9,6 +9,8 @@ import { buildEvidence } from '@scoutcore/evidence';
 import * as engineB from '@scoutcore/engine-b-bridge';
 import * as QG from '@scoutcore/quality-gates';
 import { loadCalibrationMap, getCalib, applyCalibrationToSlot, CALIBRATION_VERSION } from '@scoutcore/calibration';
+import { loadIsotonicMap, getIsotonic, applyIsotonicToSlot, ISOTONIC_VERSION } from '@scoutcore/isotonic';
+import { buildScoutReport, SCOUT_VERSION } from '@scoutcore/scout';
 import { buildSignature } from './engine-signature.mjs';
 
 function inferTemporada(dateIso) {
@@ -63,11 +65,13 @@ export function registerPredict(app, { repo }) {
     });
     const tAms = Date.now() - tA;
 
-    // 3. Engine B (stub indisponível por enquanto)
+    // 3. Engine B (sidecar Python; falha → degrada para A puro)
     let slotsB = null, tBms = null;
     if (r.options.include_engines.includes('B')) {
       const tB = Date.now();
-      const bOut = await engineB.predictBatch({});
+      const bOut = await engineB.predictBatch({
+        liga: m.liga, home: m.home, away: m.away, data: m.date,
+      });
       tBms = Date.now() - tB;
       if (bOut.available) slotsB = bOut.slots;
       else warnings.push(`engine_b_unavailable:${bOut.reason}`);
@@ -78,12 +82,20 @@ export function registerPredict(app, { repo }) {
     const combined = combine({ slotsA: aOut.slots, slotsB });
     const tCms = Date.now() - tC;
 
-    // 5. Evidence + odds annotation + Quality-Gates + Calibration EWMA
+    // 5. Evidence + odds annotation + Quality-Gates + Isotonic + Calibration EWMA
     const odds = r.odds_snapshot ?? {};
     const qgGates = QG.getGates();
+    const isoMap = loadIsotonicMap(repo.db);
+    const tIso0 = Date.now();
     for (const s of combined) {
       // certify = engine certified AND inputs OK
       s.certified = s.certified && certifiedInputs;
+
+      // Isotonic: aplicado ANTES de market_odd → edge usa fair_prob calibrado.
+      // Se modelo não existe ou n<MIN_SAMPLES → no-op com provenance.applied=false.
+      const isoEntry = getIsotonic(isoMap, { family: s.family, direction: s.direction, liga: m.liga });
+      applyIsotonicToSlot(s, isoEntry);
+
       const mo = odds[s.market_key];
       if (mo) {
         s.market_odd = mo;
@@ -107,20 +119,53 @@ export function registerPredict(app, { repo }) {
       }
       s.evidence = buildEvidence(s, { home: m.home, away: m.away, liga: m.liga });
     }
+    const tIsoMs = Date.now() - tIso0;
 
     // 6. EV ranking — score = edge_pct ajustado por confidence.
-    //    Slots com phantom_edge_flag são rebaixados (peso 0.3).
-    //    O `confidence` já carrega QG demote/promote + calib EWMA, então o
-    //    ranking final reflete naturalmente a leitura calibrada.
-    const ev_ranked = combined
+    //    Aplica family_cap (qg.json) limitando top-N por família para
+    //    diversificar o ranking final (evita um único mercado dominante).
+    const slotByKey = new Map(combined.map((s) => [s.market_key, s]));
+    const scored = combined
       .filter((s) => s.market_odd != null && s.edge_pct != null)
       .map((s) => {
         const phantomPenalty = s.provenance?.phantom_edge_flag ? 0.3 : 1.0;
         const score = (s.edge_pct ?? 0) * (s.confidence ?? 0.5) * phantomPenalty;
-        return { market_key: s.market_key, score, edge_pct: s.edge_pct, confidence: s.confidence };
+        return { market_key: s.market_key, family: s.family, score };
       })
-      .sort((a, b) => b.score - a.score)
-      .map((x) => x.market_key);
+      .sort((a, b) => b.score - a.score);
+
+    const familyCounts = new Map();
+    const ev_ranked = [];
+    const ev_ranked_capped_out = [];
+    for (const x of scored) {
+      const cap = QG.getFamilyCap(x.family) ?? Infinity;
+      const cur = familyCounts.get(x.family) ?? 0;
+      if (cur < cap) {
+        ev_ranked.push(x.market_key);
+        familyCounts.set(x.family, cur + 1);
+      } else {
+        ev_ranked_capped_out.push(x.market_key);
+        const slot = slotByKey.get(x.market_key);
+        if (slot) {
+          slot.provenance = { ...(slot.provenance ?? {}), family_cap_excluded: true, family_cap_limit: cap };
+        }
+      }
+    }
+
+    // Scout opt-in: gera relatório humano quando options.scout=true.
+    let scout = null;
+    let scoutMs = null;
+    if (r.options.scout === true) {
+      const tS = Date.now();
+      scout = buildScoutReport({
+        match: m,
+        slots: combined,
+        evRanked: ev_ranked,
+        evRankedCappedOut: ev_ranked_capped_out,
+        warnings,
+      });
+      scoutMs = Date.now() - tS;
+    }
 
     const sig = buildSignature();
     const response = {
@@ -131,15 +176,16 @@ export function registerPredict(app, { repo }) {
       warnings,
       slots: combined,
       ev_ranked,
-      scout: null,
+      ev_ranked_capped_out,
+      scout,
       diagnostics: {
         latency_ms: Date.now() - t0,
         engines_used: r.options.include_engines,
         engine_a_ms: tAms,
         engine_b_ms: tBms,
         curinga_ms: tCms,
-        isotonic_ms: 0,
-        scout_ms: null,
+        isotonic_ms: tIsoMs,
+        scout_ms: scoutMs,
         errors: {},
       },
     };

@@ -1,0 +1,45 @@
+{
+  "match": {
+    "external_id": "33xic84iyv8egpgl10vcqm6tw",
+    "liga": "brasileirao",
+    "home": "Bahia",
+    "away": "Atlético Mineiro",
+    "date": "2026-12-02"
+  },
+  "certified": false,
+  "warnings": [
+    "league_priors_missing:brasileirao"
+  ],
+  "slots_count": 131,
+  "ev_ranked_count": 27,
+  "ev_capped_out_count": 86,
+  "engine_b": {
+    "available": true,
+    "reason": null,
+    "version": "0.1.0"
+  },
+  "odds_source": "synthetic_fair_x1.05_margin_5pct",
+  "odds_disclaimer": "Odds são sintéticas (1/fair_prob × 1.05). NÃO refletem mercado real. edge_pct será sempre ~-4.76% por construção. Use AUDIT_SYNTHETIC_ODDS=0 para desabilitar.",
+  "signature": {
+    "motor_version": "0.8.0",
+    "model_a_version": "0.3.0",
+    "model_b_version": "0.2.0-sklearn-gbm",
+    "curinga_version": "0.2.0",
+    "evidence_version": "0.1.0",
+    "isotonic_version": "1.0.0",
+    "scout_version": "0.1.0",
+    "calib_snapshot_id": null,
+    "quality_gates_version": "qg-1",
+    "calibration_version": "0.1.0",
+    "markets_catalog_version": "1.0.0",
+    "data_snapshot_hash": null,
+    "hash": "8a74b775cb5ed8e6"
+  },
+  "scout_summary": "Top pick: escanteios_home_ft_under_3_5 @ 1.693 (prob=100.0%, edge=69.3pp, conf=19%) — escanteios/under.",
+  "scout_notes": [
+    "phantom_edge_detected: revisar odds e lambda",
+    "low_confidence_in_top5: 5 pick(s) com confidence<0.4",
+    "family_cap_filtered: 86 mercado(s) excluído(s) do topo"
+  ],
+  "generated_at": "2026-05-08T12:48:34.083Z"
+}

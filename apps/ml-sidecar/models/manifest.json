@@ -1,0 +1,97 @@
+{
+  "version": "0.1.0",
+  "feature_names": [
+    "home_avg_gols_marcados",
+    "home_avg_gols_sofridos",
+    "home_n_jogos",
+    "home_avg_btts",
+    "home_form_pts5",
+    "away_avg_gols_marcados",
+    "away_avg_gols_sofridos",
+    "away_n_jogos",
+    "away_avg_btts",
+    "away_form_pts5",
+    "diff_avg_marcados",
+    "diff_avg_sofridos"
+  ],
+  "min_train_samples": 200,
+  "models": [
+    {
+      "name": "gols_total_ft_over_1_5",
+      "skipped": false,
+      "n": 13398,
+      "n_train": 10718,
+      "n_test": 2680,
+      "base_rate": 0.7483672326926666,
+      "brier": 0.18594341720458019,
+      "log_loss": 0.5576877085412503,
+      "path": "gols_total_ft_over_1_5.joblib"
+    },
+    {
+      "name": "gols_total_ft_over_2_5",
+      "skipped": false,
+      "n": 13398,
+      "n_train": 10718,
+      "n_test": 2680,
+      "base_rate": 0.5024258257137526,
+      "brier": 0.24500124985793442,
+      "log_loss": 0.6832888921255282,
+      "path": "gols_total_ft_over_2_5.joblib"
+    },
+    {
+      "name": "gols_total_ft_over_3_5",
+      "skipped": false,
+      "n": 13398,
+      "n_train": 10718,
+      "n_test": 2680,
+      "base_rate": 0.2782235491696212,
+      "brier": 0.195040424725374,
+      "log_loss": 0.576615354173402,
+      "path": "gols_total_ft_over_3_5.joblib"
+    },
+    {
+      "name": "btts_sim",
+      "skipped": false,
+      "n": 13398,
+      "n_train": 10718,
+      "n_test": 2680,
+      "base_rate": 0.5296697144989737,
+      "brier": 0.24918587245110638,
+      "log_loss": 0.6918872424661989,
+      "path": "btts_sim.joblib"
+    },
+    {
+      "name": "1x2_home",
+      "skipped": false,
+      "n": 13398,
+      "n_train": 10718,
+      "n_test": 2680,
+      "base_rate": 0.44047396902407165,
+      "brier": 0.2246106402966174,
+      "log_loss": 0.6403695449448792,
+      "path": "1x2_home.joblib"
+    },
+    {
+      "name": "1x2_draw",
+      "skipped": false,
+      "n": 13398,
+      "n_train": 10718,
+      "n_test": 2680,
+      "base_rate": 0.2628288859861915,
+      "brier": 0.19406489591041118,
+      "log_loss": 0.5763435752892961,
+      "path": "1x2_draw.joblib"
+    },
+    {
+      "name": "1x2_away",
+      "skipped": false,
+      "n": 13398,
+      "n_train": 10718,
+      "n_test": 2680,
+      "base_rate": 0.29669714498973687,
+      "brier": 0.19151823431786225,
+      "log_loss": 0.5660236870726231,
+      "path": "1x2_away.joblib"
+    }
+  ]
+}
