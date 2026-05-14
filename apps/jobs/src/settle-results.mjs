@@ -7,24 +7,25 @@
 //   - partidas: home_goals/away_goals/home_goals_ht/away_goals_ht/id_confronto
 //   - eventos_faixa: (id_confronto, time, faixa) com escanteios/chutes/cartoes/faltas
 //
-// match_id namespaced ex: "opta:df1jmu4xb3o1zeagblve54vmc" → id_confronto = sufixo.
+// match_id namespaced ex: "statsline:df1jmu4xb3o1zeagblve54vmc" → id_confronto = sufixo.
 //
 // USO:
 //   node apps/jobs/src/settle-results.mjs --date=2025-11-30
 //   node apps/jobs/src/settle-results.mjs --liga=brasileirao --date=2025-11-30
 //   node apps/jobs/src/settle-results.mjs --run-id=<uuid>
+//   node apps/jobs/src/settle-results.mjs --run-id=<uuid> --closing-odds=closing.json
 //   node apps/jobs/src/settle-results.mjs --dry-run
 
 import 'dotenv/config';
 import Database from 'better-sqlite3';
 import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 import {
   loadCalibrationMap, saveCalibrationBatch, updateEwma,
 } from '@scoutcore/calibration';
 
 const HT_BANDS = ['0-10', '11-20', '21-30', '31-45'];
 const TT_BANDS = ['46-55', '56-65', '66-75', '76-90'];
-const FT_BANDS = [...HT_BANDS, ...TT_BANDS];
 
 const FAMILY_FIELD = {
   escanteios:   'escanteios',
@@ -38,7 +39,7 @@ const FAMILY_FIELD = {
 // ── Match identity helpers ───────────────────────────────────────────────────
 function extractIdConfronto(match_id) {
   if (!match_id) return null;
-  // formato canônico: "opta:<id>"
+  // formato canônico: "statsline:<id>"
   const idx = match_id.indexOf(':');
   return idx >= 0 ? match_id.slice(idx + 1) : match_id;
 }
@@ -181,7 +182,57 @@ function evalSlot(pred, stats) {
 }
 
 // ── Settle pipeline ──────────────────────────────────────────────────────────
-export function settle(db, { run_id, date, liga, dryRun = false, ewmaAlpha = 0.15 } = {}) {
+// Brier score de uma única observação binária.
+function brierOne(prob, isGreen) {
+  if (prob == null || !Number.isFinite(prob)) return null;
+  const y = isGreen ? 1 : 0;
+  return (prob - y) ** 2;
+}
+
+// EWMA do brier.
+function ewmaBrier(old, obs, alpha = 0.15) {
+  if (obs == null) return old ?? null;
+  if (old == null) return obs;
+  return alpha * obs + (1 - alpha) * old;
+}
+
+function coerceOdd(value) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 1) return value;
+  if (value && typeof value === 'object') {
+    return coerceOdd(value.odd_close ?? value.closing_odd ?? value.close ?? value.odd);
+  }
+  return null;
+}
+
+function getClosingOdd(closingOdds, prediction) {
+  if (!closingOdds || typeof closingOdds !== 'object') return null;
+  return coerceOdd(
+    closingOdds[prediction.market_key]
+      ?? closingOdds[prediction.run_id]?.[prediction.market_key]
+      ?? closingOdds[prediction.match_id]?.[prediction.market_key],
+  );
+}
+
+function calcClvPct(oddOpen, oddClose) {
+  if (!oddOpen || !oddClose) return null;
+  if (!Number.isFinite(oddOpen) || !Number.isFinite(oddClose)) return null;
+  if (oddOpen <= 1 || oddClose <= 1) return null;
+  return +((oddOpen / oddClose - 1) * 100).toFixed(4);
+}
+
+function isClosingOddSane(oddOpen, oddClose) {
+  if (!oddOpen || !oddClose) return false;
+  if (!Number.isFinite(oddOpen) || !Number.isFinite(oddClose)) return false;
+  if (oddOpen <= 1 || oddClose <= 1) return false;
+  return oddClose >= oddOpen * 0.5 && oddClose <= oddOpen * 2;
+}
+
+function readClosingOdds(path) {
+  const raw = readFileSync(path, 'utf8').replace(/^\uFEFF/, '');
+  return JSON.parse(raw);
+}
+
+export function settle(db, { run_id, date, liga, dryRun = false, ewmaAlpha = 0.15, closingOdds = null } = {}) {
   let q = `SELECT * FROM prediction WHERE result IS NULL`;
   const params = [];
   if (run_id) { q += ' AND run_id = ?'; params.push(run_id); }
@@ -204,10 +255,19 @@ export function settle(db, { run_id, date, liga, dryRun = false, ewmaAlpha = 0.1
     `UPDATE prediction SET result = ?, settled_at = datetime('now') WHERE run_id = ? AND market_key = ?`
   );
 
-  const calibMap = loadCalibrationMap(db, 'A');
-  const groups = new Map(); // key family::direction::liga → { n_total, n_green, sum_prob }
+  const insertClv = dryRun ? null : db.prepare(`
+    INSERT INTO clv_history
+      (run_id, match_id, market_key, family, liga,
+       fair_prob_motor, fair_odd_motor, prob_a, prob_b,
+       odd_open, odd_close, result,
+       brier_a, brier_b, clv_pct, source, settled_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  `);
 
-  let settled = 0, skipped = 0, no_data = 0;
+  const calibMap = loadCalibrationMap(db, 'A');
+  const groups = new Map(); // key family::direction::liga → { n_total, n_green, sum_prob, sum_brier }
+
+  let settled = 0, skipped = 0, no_data = 0, clv_inserted = 0, clv_with_close = 0, clv_invalid_close = 0;
   for (const p of preds) {
     const stats = getStats(p.match_id);
     if (!stats) { no_data++; continue; }
@@ -216,15 +276,42 @@ export function settle(db, { run_id, date, liga, dryRun = false, ewmaAlpha = 0.1
     if (!dryRun) update.run(out, p.run_id, p.market_key);
     settled++;
 
+    const isGreen = out === 'green';
+    const brier = brierOne(p.fair_prob, isGreen);
+
+    const oddOpen  = p.market_odd ?? null;
+    const rawOddClose = getClosingOdd(closingOdds, p);
+    const oddClose = isClosingOddSane(oddOpen, rawOddClose) ? rawOddClose : null;
+    if (rawOddClose != null && oddClose == null) clv_invalid_close++;
+    const clvPct   = calcClvPct(oddOpen, oddClose);
+    if (oddClose != null) clv_with_close++;
+
+    if (!dryRun) {
+      try {
+        insertClv.run(
+          p.run_id, p.match_id, p.market_key, p.family, p.liga,
+          p.fair_prob ?? null,
+          p.fair_prob ? +(1 / p.fair_prob).toFixed(4) : null,
+          p.fair_prob ?? null, null,        // prob_a, prob_b (engine B not yet)
+          oddOpen, oddClose, out,
+          brier, null, clvPct, 'live',
+        );
+        clv_inserted++;
+      } catch {
+        // não interrompe settle por falha de clv_history
+      }
+    }
+
     const key = `${p.family}::${p.direction}::${p.liga}`;
     if (!groups.has(key)) groups.set(key, {
       family: p.family, direction: p.direction, liga: p.liga,
-      n_total: 0, n_green: 0, sum_prob: 0,
+      n_total: 0, n_green: 0, sum_prob: 0, sum_brier: 0, n_brier: 0,
     });
     const g = groups.get(key);
     g.n_total++;
-    g.n_green += out === 'green' ? 1 : 0;
+    g.n_green += isGreen ? 1 : 0;
     g.sum_prob += p.fair_prob ?? 0.5;
+    if (brier != null) { g.sum_brier += brier; g.n_brier++; }
   }
 
   // Atualiza calib_state via EWMA
@@ -251,12 +338,15 @@ export function settle(db, { run_id, date, liga, dryRun = false, ewmaAlpha = 0.1
       else if (isUnder && actual_hr > expected_hr + 0.08) lambdaMult = Math.max(0.65, 1 - (actual_hr - expected_hr) * 1.2);
 
       const prevN = calib?.sample_size ?? 0;
+      const obsBrier = g.n_brier > 0 ? g.sum_brier / g.n_brier : null;
+      const newEwmaBrier = ewmaBrier(calib?.ewma_brier ?? null, obsBrier, ewmaAlpha);
       updates.push({
         family: g.family, direction: g.direction, liga: g.liga,
         lambda_mult: +lambdaMult.toFixed(3),
         confidence_factor: +newConf.toFixed(3),
         line_shift: 0.0,
         ewma_hr: +newEwma.toFixed(4),
+        ewma_brier: newEwmaBrier == null ? null : +newEwmaBrier.toFixed(6),
         sample_size: prevN + g.n_total,
       });
     }
@@ -264,7 +354,7 @@ export function settle(db, { run_id, date, liga, dryRun = false, ewmaAlpha = 0.1
     calib_updated = updates.length;
   }
 
-  return { total: preds.length, settled, skipped, no_data, calib_updated };
+  return { total: preds.length, settled, skipped, no_data, calib_updated, clv_inserted, clv_with_close, clv_invalid_close };
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
@@ -275,6 +365,7 @@ function parseArgs(argv) {
     else if (a.startsWith('--date=')) out.date = a.slice('--date='.length);
     else if (a.startsWith('--liga=')) out.liga = a.slice('--liga='.length);
     else if (a.startsWith('--run-id=')) out.run_id = a.slice('--run-id='.length);
+    else if (a.startsWith('--closing-odds=')) out.closingOdds = readClosingOdds(a.slice('--closing-odds='.length));
   }
   return out;
 }

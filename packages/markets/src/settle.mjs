@@ -318,16 +318,21 @@ function pickCorners(m, r) {
 
 function pickShots(m, r) {
   if (!r) return null;
-  if (m.scope === 'total') return (r.home_shots != null && r.away_shots != null) ? r.home_shots + r.away_shots : null;
-  if (m.scope === 'home')  return r.home_shots;
-  if (m.scope === 'away')  return r.away_shots;
+  const hk = m.period === 'HT' ? 'home_shots_ht' : 'home_shots';
+  const ak = m.period === 'HT' ? 'away_shots_ht' : 'away_shots';
+  const h = r[hk], a = r[ak];
+  if (m.scope === 'total') return (h != null && a != null) ? h + a : null;
+  if (m.scope === 'home')  return h ?? null;
+  if (m.scope === 'away')  return a ?? null;
   return null;
 }
 
 function pickShotsOnTarget(m, r) {
   if (!r) return null;
-  const h = r.home_shots_on_target ?? null;
-  const a = r.away_shots_on_target ?? null;
+  const hk = m.period === 'HT' ? 'home_shots_on_target_ht' : 'home_shots_on_target';
+  const ak = m.period === 'HT' ? 'away_shots_on_target_ht' : 'away_shots_on_target';
+  const h = r[hk] ?? null;
+  const a = r[ak] ?? null;
   if (m.scope === 'total') return (h != null && a != null) ? h + a : null;
   if (m.scope === 'home')  return h;
   if (m.scope === 'away')  return a;
@@ -336,9 +341,14 @@ function pickShotsOnTarget(m, r) {
 
 function pickCards(m, r) {
   if (!r) return null;
-  if (r.home_yc == null && r.away_yc == null) return null;
-  const hp = (r.home_yc ?? 0) + 2 * (r.home_rc ?? 0);
-  const ap = (r.away_yc ?? 0) + 2 * (r.away_rc ?? 0);
+  const isHT = m.period === 'HT';
+  const hyc = isHT ? r.home_yc_ht : r.home_yc;
+  const ayc = isHT ? r.away_yc_ht : r.away_yc;
+  const hrc = isHT ? r.home_rc_ht : r.home_rc;
+  const arc = isHT ? r.away_rc_ht : r.away_rc;
+  if (hyc == null && ayc == null) return null;
+  const hp = (hyc ?? 0) + 2 * (hrc ?? 0);
+  const ap = (ayc ?? 0) + 2 * (arc ?? 0);
   if (m.scope === 'total') return hp + ap;
   if (m.scope === 'home')  return hp;
   if (m.scope === 'away')  return ap;
@@ -347,15 +357,20 @@ function pickCards(m, r) {
 
 function pickFouls(m, r) {
   if (!r) return null;
-  if (m.scope === 'total') return (r.home_fouls != null && r.away_fouls != null) ? r.home_fouls + r.away_fouls : null;
-  if (m.scope === 'home')  return r.home_fouls;
-  if (m.scope === 'away')  return r.away_fouls;
+  const hk = m.period === 'HT' ? 'home_fouls_ht' : 'home_fouls';
+  const ak = m.period === 'HT' ? 'away_fouls_ht' : 'away_fouls';
+  const h = r[hk], a = r[ak];
+  if (m.scope === 'total') return (h != null && a != null) ? h + a : null;
+  if (m.scope === 'home')  return h ?? null;
+  if (m.scope === 'away')  return a ?? null;
   return null;
 }
 
 function pickGeneric(m, r, homeKey, awayKey) {
   if (!r) return null;
-  const h = r[homeKey], a = r[awayKey];
+  const hk = m.period === 'HT' ? `${homeKey}_ht` : homeKey;
+  const ak = m.period === 'HT' ? `${awayKey}_ht` : awayKey;
+  const h = r[hk], a = r[ak];
   if (m.scope === 'total') return (h != null && a != null) ? h + a : null;
   if (m.scope === 'home')  return h ?? null;
   if (m.scope === 'away')  return a ?? null;

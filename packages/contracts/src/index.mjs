@@ -4,17 +4,32 @@
 import { z } from 'zod';
 
 // ────────── Domínio base ──────────
-
-export const FAMILIES = ['gols', 'btts', '1x2', 'escanteios', 'chutes', 'cartoes', 'faltas'];
+//
+// FAMILIES: lista exaustiva — DEVE bater com `packages/markets/src/registry.mjs`.
+// Quando um family novo for adicionado ao registry, adicionar aqui também.
+// PERIODS: 'FULL' é usado por mercados acumulados (htft, correct_score, margem,
+// etc.) que dependem do jogo inteiro mas não são separáveis em FT/HT/2T.
+// DIRECTIONS: regex permissivo — o universo é ~95 valores (correct_score 0_0..4_4,
+// asian_handicap home_minus_2..away_plus_2, escanteios_exato eq_0..eq_15_plus,
+// etc.). Manter enum exaustivo aqui criaria drift permanente vs registry.
+export const FAMILIES = [
+  'gols', 'btts', '1x2', 'escanteios', 'chutes', 'cartoes', 'faltas',
+  'asian_total', 'btts_ambos_tempos', 'btts_algum_tempo',
+  'dupla', 'dnb', 'htft', 'correct_score', 'margem',
+  'marca_primeiro', 'marca_ultimo', 'marca',
+  'handicap', 'asian_handicap',
+  'escanteios_asian', 'escanteios_1x2', 'escanteios_race', 'escanteios_exato',
+  'chutes_alvo', 'cartoes_1x2', 'impedimentos', 'defesas',
+];
 export const SCOPES   = ['total', 'home', 'away'];
-export const PERIODS  = ['FT', 'HT', '2T'];
-export const DIRECTIONS = ['over', 'under', 'sim', 'nao', 'home', 'draw', 'away'];
+export const PERIODS  = ['FT', 'HT', '2T', 'FULL'];
+export const DIRECTION_REGEX = /^[a-z0-9_]+$/;
 export const ENGINES = ['A', 'B'];
 
 export const FamilyZ    = z.enum(FAMILIES);
 export const ScopeZ     = z.enum(SCOPES);
 export const PeriodZ    = z.enum(PERIODS);
-export const DirectionZ = z.enum(DIRECTIONS);
+export const DirectionZ = z.string().regex(DIRECTION_REGEX, 'direction must be lower_snake_case');
 export const EngineZ    = z.enum(ENGINES);
 
 export const LigaCanonZ = z.string().regex(/^[a-z0-9-]+$/, 'liga must be kebab-case');
@@ -66,7 +81,9 @@ export const SlotZ = z.object({
 
   fair_prob_raw: z.number().min(0).max(1),
   fair_prob: z.number().min(0).max(1),
-  fair_odd: z.number().positive(),
+  // fair_odd pode ser null quando fair_prob ≈ 0 (ex: correct_score impossível,
+  // marca_ultimo/eq_15_plus em volumes baixos). Não invalida o slot.
+  fair_odd: z.number().positive().nullable(),
   market_odd: z.number().positive().nullable().optional(),
   edge_pct: z.number().nullable().optional(),
   confidence: z.number().min(0).max(1).nullable().optional(),
@@ -124,6 +141,7 @@ export const PredictRequestZ = z.object({
     scout: z.boolean().default(false),
     include_engines: z.array(EngineZ).default(['A']),
     min_edge_pp: z.number().default(0),
+    suppress_markets: z.array(z.string()).default([]),
     feature_set: z.string().default('v3'),
   }).default({}),
 });

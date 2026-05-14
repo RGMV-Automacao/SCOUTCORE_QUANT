@@ -6,7 +6,7 @@
 
 ## Visão de uma linha
 
-Motor de predição **probabilística** com 479 mercados todos abertos (P9 zero-bloqueio), reaproveitando a extração Opta + Superbet do FutMax via **dual-write** em SQLite, e construindo calibração própria do zero via **replay histórico** de ~14.998 partidas.
+Motor de predição **probabilística** com 576 mercados todos abertos (P9 zero-bloqueio), reaproveitando a extração statsline + bookline do FutMax via **dual-write** em SQLite, e construindo calibração própria do zero via **replay histórico** de ~14.998 partidas.
 
 A spec formal está em [`docs/spec/SCOUTCORE_SPEC.md`](docs/spec/SCOUTCORE_SPEC.md).
 
@@ -20,7 +20,7 @@ SCOUTCORE_QUANT/
 │  └─ jobs/            # Cron: replay-bootstrap, settlement, sync-check
 ├─ packages/
 │  ├─ contracts/       # Tipos compartilhados
-│  ├─ markets/         # Catálogo SemVer dos 479 mercados
+│  ├─ markets/         # Catálogo SemVer dos 576 mercados
 │  ├─ engine-a/        # Poisson independente
 │  ├─ engine-b-bridge/ # Cliente do sidecar Python
 │  ├─ curinga/         # Meta-arbiter (brier + EWMA + reversal)
@@ -55,7 +55,7 @@ npm install
 copy .env.example .env
 
 # 4. Boot
-npm run setup:copy-legacy   # copia opta.db -> data/scout.db (one-time)
+npm run setup:copy-legacy   # copia statsline.db -> data/scout.db (one-time)
 npm run setup:wipe-state    # apaga tabelas de motor antigo
 npm run setup:migrate       # cria tabelas do motor novo
 npm run setup:replay        # replay historico (~10 dias)

@@ -2,7 +2,7 @@
 //
 // Cobre nesta versão:
 //   - GOLS total/home/away FT  (over/under linhas .5)
-//   - GOLS total HT             (over/under) — usa scaling 0.40 do FT
+//   - GOLS total/home/away HT   (over/under) — usa scaling 0.40 do FT
 //   - BTTS FT/HT
 //   - 1X2 FT/HT
 //   - ESCANTEIOS total/home/away FT + total/home/away HT (Poisson independente)
@@ -16,7 +16,7 @@
 //
 // FORA do escopo:
 //   - 2T derivado FT-HT (precisa skel separado, não confiável só por subtração).
-//   - HT scope home/away para gols (scaling não confiável sem dados de bandas).
+//   - Gols HT por equipe usa scaling global conservador; confidence/QG deve tratar como mais fraco.
 
 import { listMarkets, MARKETS_VERSION } from '@scoutcore/markets';
 import { scoreMatrix, poissonPMF } from './poisson.mjs';
@@ -43,13 +43,22 @@ const LOW_CONFIDENCE_FAMILIES = new Set(['cartoes', 'faltas']);
  * Calcula λ casa/fora a partir de team profiles + league prior (gols).
  */
 export function computeLambdas({ profileHome, profileAway, priors, homeAdvantage = 1.10 }) {
-  const leagueAvg = priors?.avg_goals_total ?? 2.6;
+  if (!Number.isFinite(priors?.avg_goals_total)) {
+    throw new Error('engine_a_missing_priors:avg_goals_total');
+  }
+  if (!Number.isFinite(profileHome?.avg_gols_marcados) || !Number.isFinite(profileHome?.avg_gols_sofridos)) {
+    throw new Error('engine_a_missing_profile_home');
+  }
+  if (!Number.isFinite(profileAway?.avg_gols_marcados) || !Number.isFinite(profileAway?.avg_gols_sofridos)) {
+    throw new Error('engine_a_missing_profile_away');
+  }
+  const leagueAvg = priors.avg_goals_total;
   const leagueHomePerTeam = leagueAvg / 2;
 
-  const attH = (profileHome?.avg_gols_marcados ?? leagueHomePerTeam) / leagueHomePerTeam;
-  const defA = (profileAway?.avg_gols_sofridos ?? leagueHomePerTeam) / leagueHomePerTeam;
-  const attA = (profileAway?.avg_gols_marcados ?? leagueHomePerTeam) / leagueHomePerTeam;
-  const defH = (profileHome?.avg_gols_sofridos ?? leagueHomePerTeam) / leagueHomePerTeam;
+  const attH = profileHome.avg_gols_marcados / leagueHomePerTeam;
+  const defA = profileAway.avg_gols_sofridos / leagueHomePerTeam;
+  const attA = profileAway.avg_gols_marcados / leagueHomePerTeam;
+  const defH = profileHome.avg_gols_sofridos / leagueHomePerTeam;
 
   const lambdaHome = leagueHomePerTeam * attH * defA * homeAdvantage;
   const lambdaAway = leagueHomePerTeam * attA * defH / homeAdvantage;
@@ -183,12 +192,7 @@ function predictCountFamily({ family, profileKey, leagueTotalKey, profileHome, p
     profileHome, profileAway, priors, key: profileKey, leagueTotalKey,
   });
   if (lambdas.lambdaHome == null || lambdas.lambdaAway == null) {
-    for (const m of listMarkets({ family })) {
-      if (m.line == null) continue;
-      out.push(mkSlot(m, 0.5, false, {
-        engine: 'A', family, reason: 'insufficient_inputs', used: lambdas.used,
-      }));
-    }
+    // Insufficient inputs — não fabrica fair_prob. Família é omitida do output.
     return out;
   }
 
@@ -284,6 +288,16 @@ export function predict(ctx) {
     slots.push(mkSlot(m, p, true, { ...provBaseGoals, period_scaling: HT_SCALE_GOLS }));
   }
 
+  // GOLS over/under — home/away HT (aprox. por matrix HT escalada)
+  for (const scope of ['home', 'away']) {
+    for (const m of listMarkets({ family: 'gols', period: 'HT', scope })) {
+      if (m.line == null) continue;
+      const pOver = scope === 'home' ? probHomeOver(matrixHT, m.line) : probAwayOver(matrixHT, m.line);
+      const p = m.direction === 'over' ? pOver : (1 - pOver);
+      slots.push(mkSlot(m, p, true, { ...provBaseGoals, period_scaling: HT_SCALE_GOLS, ht_team_goal_approx: true }));
+    }
+  }
+
   // BTTS FT
   const pBTTS_FT = probBTTS(matrixFT);
   for (const m of listMarkets({ family: 'btts', period: 'FT' })) {
@@ -311,6 +325,17 @@ export function predict(ctx) {
   // ESCANTEIOS — total/home/away FT + HT
   slots.push(...predictCountFamily({
     family: 'escanteios',
+    profileKey: 'avg_escanteios',
+    leagueTotalKey: 'avg_escanteios_total',
+    profileHome: ctx.profileHome,
+    profileAway: ctx.profileAway,
+    priors: ctx.priors,
+    lambdaMult: lm('escanteios'),
+  }));
+
+  // ESCANTEIOS asiatico total FT (.25/.75), mesma lambda total dos escanteios.
+  slots.push(...predictCountFamily({
+    family: 'escanteios_asian',
     profileKey: 'avg_escanteios',
     leagueTotalKey: 'avg_escanteios_total',
     profileHome: ctx.profileHome,
@@ -497,7 +522,8 @@ function deriveDNB(matrixFT, matrixHT, matrix2T, provBase) {
   for (const m of listMarkets({ family: 'dnb' })) {
     const x = prob1X2(matrices[m.period]);
     const denom = x.home + x.away;
-    const p = denom > 0 ? (m.direction === 'home' ? x.home : x.away) / denom : 0.5;
+    if (denom <= 0) continue; // P(draw)=1 → DNB indefinido; não emite.
+    const p = (m.direction === 'home' ? x.home : x.away) / denom;
     out.push(mkSlot(m, p, true, { ...provBase, family: 'dnb' }));
   }
   return out;
@@ -784,6 +810,8 @@ export function coveredFamilies() {
     { family: 'gols',        scope: 'home',  period: 'FT' },
     { family: 'gols',        scope: 'away',  period: 'FT' },
     { family: 'gols',        scope: 'total', period: 'HT' },
+    { family: 'gols',        scope: 'home',  period: 'HT' },
+    { family: 'gols',        scope: 'away',  period: 'HT' },
     { family: 'btts',        scope: 'total', period: 'FT' },
     { family: 'btts',        scope: 'total', period: 'HT' },
     { family: '1x2',         scope: 'total', period: 'FT' },
@@ -794,6 +822,7 @@ export function coveredFamilies() {
     { family: 'escanteios',  scope: 'total', period: 'HT' },
     { family: 'escanteios',  scope: 'home',  period: 'HT' },
     { family: 'escanteios',  scope: 'away',  period: 'HT' },
+    { family: 'escanteios_asian', scope: 'total', period: 'FT' },
     { family: 'chutes',      scope: 'total', period: 'FT' },
     { family: 'chutes',      scope: 'home',  period: 'FT' },
     { family: 'chutes',      scope: 'away',  period: 'FT' },

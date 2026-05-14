@@ -83,7 +83,8 @@ export function getConfidenceMultiplier(slot) {
     }
     return cm.cards_audited ?? 1.0;
   }
-  if (family === 'chutes')       return cm.sot ?? 1.0;
+  if (family === 'chutes')       return cm.shots ?? 1.0;
+  if (family === 'chutes_alvo')  return cm.sot ?? 1.0;
   if (family === 'finalizacoes') return cm.shots ?? 1.0;
   if (family === 'faltas')       return cm.fouls_audited ?? 1.0;
 

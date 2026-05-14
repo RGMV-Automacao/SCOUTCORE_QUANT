@@ -47,7 +47,64 @@ function toCsv(rows, headers) {
   return lines.join('\n') + '\n';
 }
 
+function readOptionalJson(path) {
+  if (!path) return {};
+  return JSON.parse(fs.readFileSync(resolve(path), 'utf8').replace(/^\uFEFF/, ''));
+}
+
+function asJson(value) {
+  if (value == null) return '';
+  return JSON.stringify(value);
+}
+
+function toNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function isGreenResult(result) {
+  const normalized = String(result || '').toLowerCase();
+  if (['green', 'win', 'won', '1', 'true'].includes(normalized)) return true;
+  if (['red', 'loss', 'lost', '0', 'false'].includes(normalized)) return false;
+  return null;
+}
+
+function brier(prob, result) {
+  const p = toNumber(prob);
+  const y = isGreenResult(result);
+  if (p == null || y == null) return '';
+  return +((p - (y ? 1 : 0)) ** 2).toFixed(6);
+}
+
+function isClosingOddSane(openOdd, closeOdd) {
+  const open = toNumber(openOdd);
+  const close = toNumber(closeOdd);
+  if (open == null || close == null || open <= 1 || close <= 1) return '';
+  return close >= open * 0.5 && close <= open * 2;
+}
+
+function clvPct(openOdd, closeOdd) {
+  if (isClosingOddSane(openOdd, closeOdd) !== true) return '';
+  return +((openOdd / closeOdd - 1) * 100).toFixed(4);
+}
+
+function evaluateMarketGate(slot, { gates, minEdgePp = 0 } = {}) {
+  const reasons = [];
+  if (slot.market_odd == null || slot.edge_pct == null) {
+    return { pass: true, rank_eligible: false, reasons: ['no_market_odd'] };
+  }
+  const edgeMin = Math.max(Number(gates?.edge_min_pp ?? 0), Number(minEdgePp ?? 0));
+  const evMin = Number(gates?.ev_min_pct ?? 0);
+  if (gates?.leg_ev_positive === true && slot.edge_pct < 0) reasons.push('leg_ev_negative');
+  if (slot.edge_pct < edgeMin) reasons.push('edge_below_min');
+  if (slot.edge_pct < evMin) reasons.push('ev_below_min');
+  return { pass: reasons.length === 0, rank_eligible: reasons.length === 0, edge_min_pp: edgeMin, ev_min_pct: evMin, reasons };
+}
+
 async function main() {
+  const generatedAt = new Date().toISOString();
+  const runId = process.env.AUDIT_RUN_ID || `audit:${generatedAt}`;
+  const closingOdds = readOptionalJson(process.env.AUDIT_CLOSING_ODDS);
+  const marketResults = readOptionalJson(process.env.AUDIT_MARKET_RESULTS);
   // 1. Pega partida com (a) priors+profiles E (b) odds Superbet reais.
   //    Quando o usuário passa MATCH_HOME/MATCH_AWAY/MATCH_DATE via env, usamos.
   const db = new Database(DB_PATH, { readonly: true, fileMustExist: true });
@@ -175,7 +232,7 @@ async function main() {
   const qgGates = QG.getGates();
   for (const s of combined) {
     s.certified = s.certified && certifiedInputs;
-    const isoEntry = getIsotonic(isoMap, { family: s.family, direction: s.direction, liga: match.liga });
+    const isoEntry = getIsotonic(isoMap, { family: s.family, period: s.period, direction: s.direction, liga: match.liga });
     applyIsotonicToSlot(s, isoEntry);
     const mo = odds[s.market_key];
     if (mo) {
@@ -185,22 +242,28 @@ async function main() {
     const qgEval = QG.evaluateSlot(s, { liga: match.liga });
     const baseConfidence = certifiedInputs ? 0.5 : 0.2;
     s.confidence = +(baseConfidence * qgEval.qg_confidence).toFixed(4);
-    s.provenance = { ...(s.provenance ?? {}), qg: qgEval };
+    const marketGate = evaluateMarketGate(s, { gates: qgGates });
+    s.provenance = { ...(s.provenance ?? {}), qg: { ...qgEval, market_gate: marketGate } };
+    if (!marketGate.pass) s.certified = false;
     const calib = getCalib(calibMap, { family: s.family, direction: s.direction, liga: match.liga });
     applyCalibrationToSlot(s, calib);
     if (s.edge_pct != null && qgGates.phantom_edge_threshold_pp != null && s.edge_pct >= qgGates.phantom_edge_threshold_pp) {
       s.provenance.phantom_edge_flag = true;
+      s.certified = false;
     }
     s.evidence = buildEvidence(s, { home: match.home, away: match.away, liga: match.liga });
   }
 
   // EV ranking + family cap
-  const slotByKey = new Map(combined.map((s) => [s.market_key, s]));
   const scored = combined
-    .filter((s) => s.market_odd != null && s.edge_pct != null)
+    .filter((s) =>
+      s.market_odd != null &&
+      s.edge_pct != null &&
+      s.provenance?.qg?.market_gate?.rank_eligible === true &&
+      !s.provenance?.phantom_edge_flag,
+    )
     .map((s) => {
-      const phantomPenalty = s.provenance?.phantom_edge_flag ? 0.3 : 1.0;
-      const score = (s.edge_pct ?? 0) * (s.confidence ?? 0.5) * phantomPenalty;
+      const score = (s.edge_pct ?? 0) * (s.confidence ?? 0.5);
       return { market_key: s.market_key, family: s.family, score };
     })
     .sort((a, b) => b.score - a.score);
@@ -215,7 +278,15 @@ async function main() {
   }
 
   const scout = buildScoutReport({ match, slots: combined, evRanked: ev_ranked, evRankedCappedOut: ev_ranked_capped_out, warnings });
-  const sig = buildSignature();
+  const sig = buildSignature({
+    db: repo.db,
+    dataSnapshot: {
+      match,
+      temporada,
+      as_of: match.date,
+      inputs: { profile_home: profileHome, profile_away: profileAway, league_priors_ft: priorsFt },
+    },
+  });
 
   // 4. Export CSVs
   const bSlotKeys = new Set(bOut.available ? bOut.slots.map((x) => x.market_key) : []);
@@ -266,6 +337,74 @@ async function main() {
   };
   });
 
+  const auditUnifiedRows = combined.map((s) => {
+    const op = oddsProvenance[s.market_key] ?? { kind: 'absent', reason: 'unknown' };
+    const provenance = s.provenance || {};
+    const qg = provenance.qg || {};
+    const gate = qg.market_gate || {};
+    const isotonic = provenance.isotonic || {};
+    const calib = provenance.calib || {};
+    const close = closingOdds[s.market_key] ?? '';
+    const settlement = marketResults[s.market_key] ?? '';
+    return {
+      run_id: runId,
+      external_id: match.external_id,
+      liga: match.liga,
+      date: match.date,
+      hora: match.hora || '',
+      home: match.home,
+      away: match.away,
+      certified_match: certifiedInputs,
+      warnings: warnings.join('|'),
+      model_b_version: sig.model_b_version,
+      signature_hash: sig.hash,
+      calib_snapshot_id: sig.calib_snapshot_id,
+      data_snapshot_hash: sig.data_snapshot_hash,
+      model_b_artifacts_hash: sig.model_b_artifacts_hash,
+      market_key: s.market_key,
+      family: s.family,
+      scope: s.scope,
+      period: s.period,
+      direction: s.direction,
+      line: s.line,
+      fair_prob_raw: s.fair_prob_raw,
+      fair_prob: s.fair_prob,
+      fair_odd: s.fair_odd,
+      market_odd: s.market_odd,
+      closing_odd: close,
+      closing_odd_sane: isClosingOddSane(s.market_odd, close),
+      settlement_result: settlement,
+      brier_motor: brier(s.fair_prob, settlement),
+      brier_a: brier(provenance.fair_prob_a, settlement),
+      brier_b: brier(provenance.fair_prob_b, settlement),
+      clv_pct: clvPct(s.market_odd, close),
+      edge_pct: s.edge_pct,
+      confidence: s.confidence,
+      certified_slot: s.certified,
+      source: s.source,
+      coverage_status: coverageStatus(s.market_key),
+      odd_kind: op.kind,
+      odd_reason: op.reason ?? '',
+      weight_a: provenance.weight_a ?? '',
+      weight_b: provenance.weight_b ?? '',
+      fair_prob_a: provenance.fair_prob_a ?? '',
+      fair_prob_b: provenance.fair_prob_b ?? '',
+      divergence_pp: provenance.divergence_pp ?? '',
+      phantom_edge_flag: provenance.phantom_edge_flag ?? false,
+      isotonic_applied: isotonic.applied ?? false,
+      isotonic_reason: isotonic.reason || '',
+      isotonic_n_samples: isotonic.n_samples ?? '',
+      calib_applied: calib.applied ?? false,
+      calib_reason: calib.reason || '',
+      qg_confidence: qg.qg_confidence ?? '',
+      market_gate_pass: gate.pass ?? '',
+      rank_eligible: gate.rank_eligible ?? '',
+      market_gate_reasons: (gate.reasons || []).join('|'),
+      evidence_drivers: asJson(s.evidence?.drivers || []),
+      evidence_notes: (s.evidence?.notes || []).join('|'),
+    };
+  });
+
   fs.writeFileSync(resolve(OUT, 'predictions.csv'), toCsv(predictionsRows, [
     'market_key','family','direction','line','period','scope',
     'fair_prob','fair_odd','market_odd','edge_pct','confidence','certified','source',
@@ -274,6 +413,17 @@ async function main() {
     'isotonic_applied','isotonic_p_before','isotonic_p_after',
     'calib_applied','family_cap_excluded','phantom_edge_flag',
     'weight_a','weight_b','fair_prob_a','fair_prob_b','divergence_pp',
+  ]));
+
+  fs.writeFileSync(resolve(OUT, 'audit_unified.csv'), toCsv(auditUnifiedRows, [
+    'run_id','external_id','liga','date','hora','home','away','certified_match','warnings',
+    'model_b_version','signature_hash','calib_snapshot_id','data_snapshot_hash','model_b_artifacts_hash',
+    'market_key','family','scope','period','direction','line',
+    'fair_prob_raw','fair_prob','fair_odd','market_odd','closing_odd','closing_odd_sane','settlement_result',
+    'brier_motor','brier_a','brier_b','clv_pct','edge_pct','confidence','certified_slot','source',
+    'coverage_status','odd_kind','odd_reason','weight_a','weight_b','fair_prob_a','fair_prob_b','divergence_pp',
+    'phantom_edge_flag','isotonic_applied','isotonic_reason','isotonic_n_samples','calib_applied','calib_reason',
+    'qg_confidence','market_gate_pass','rank_eligible','market_gate_reasons','evidence_drivers','evidence_notes',
   ]));
 
   // coverage_audit.csv: agregado por (família, status)
@@ -308,9 +458,11 @@ async function main() {
   ));
   fs.writeFileSync(resolve(OUT, 'meta.json'), JSON.stringify({
     match, certified: certifiedInputs, warnings,
+    run_id: runId,
     slots_count: combined.length,
     ev_ranked_count: ev_ranked.length,
     ev_capped_out_count: ev_ranked_capped_out.length,
+    files: ['predictions.csv', 'audit_unified.csv', 'ev_ranked.csv', 'ev_capped_out.csv', 'coverage_audit.csv', 'scout.csv', 'signature.csv', 'meta.json'],
     engine_b: { available: bOut.available, reason: bOut.reason ?? null, version: bOut.version, slots_count: bOut.available ? bOut.slots.length : 0 },
     superbet: {
       odds_total: sbRows.length,
@@ -329,7 +481,7 @@ async function main() {
     signature: sig,
     scout_summary: scout.summary,
     scout_notes: scout.notes,
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt,
   }, null, 2));
 
   console.log(`[audit] wrote ${OUT}`);

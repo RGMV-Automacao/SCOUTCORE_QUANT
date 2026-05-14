@@ -41,15 +41,15 @@ Apaga: `predictions`, `ml_predictions`, `calibration_states`, `motor_runs`, `mot
 npm run setup:migrate
 ```
 
-Cria: `motor_run_v2`, `calib_state_v2`, `isotonic_blob`, `clv_history`, `feature_snapshot_cache`, `replay_progress`, `sync_check_log`, `schema_version`.
+Cria/normaliza: `motor_run`, `prediction`, `calib_state`, `isotonic_blob`, `clv_history`, `feature_snapshot_cache`, `replay_progress`, `sync_check_log`, `schema_version`. As tabelas iniciais `motor_run_v2` e `calib_state_v2` são removidas pela migration 004 porque o runtime nunca escreve nelas.
 
 ### 5. Replay histórico (Opção B) — ~10 dias
 
 ```powershell
-npm run setup:replay
+npm run setup:replay -- --engines=A,B
 ```
 
-> ⚠️ **STUB neste momento.** Implementação real depende dos pacotes `engine-a`, `engine-b-bridge`, `markets`, `data-access`, `evidence`. Ver SPEC §17.4.
+O replay usa Engine A+B por padrão (`REPLAY_ENGINES=A,B`). Se o sidecar B estiver indisponível, o bridge degrada a execução sem derrubar o job.
 
 ### 6. Subir API
 
@@ -72,6 +72,22 @@ npm run job:sync-check
 
 Esperado: `OK <table>: delta=0` em todas as tabelas. Se houver drift > 5, investigar logs do FutMax.
 
+### 9. Snapshot de closing line
+
+O motor aceita closing odds no settlement. Para produzir o arquivo de entrada a partir da tabela `odds`, rode o snapshot perto do kickoff, idealmente T-5min:
+
+```powershell
+npm run job:snapshot-closing -- --date=2026-05-12 --out=audit\closing-2026-05-12.json
+```
+
+Por padrão o job só aceita odds coletadas nos últimos 15 minutos. Para auditoria/backfill sem filtro de frescor, use `--max-age-minutes=0`; isso é útil para diagnóstico, mas não deve ser tratado como CLV financeiro.
+
+O arquivo gerado é consumido pelo settler:
+
+```powershell
+node apps\jobs\src\settle-results.mjs --run-id=<run_id> --closing-odds=audit\closing-2026-05-12.json
+```
+
 ## Verificação final
 
 - [ ] `data/scout.db` criado
@@ -81,3 +97,4 @@ Esperado: `OK <table>: delta=0` em todas as tabelas. Se houver drift > 5, invest
 - [ ] `GET /health` retorna `{status:"ok"}`
 - [ ] FutMax dual-write configurado
 - [ ] Sync-check sem drift
+- [ ] `npm run job:snapshot-closing -- --dry-run` retorna cobertura compatível com a coleta de odds recente

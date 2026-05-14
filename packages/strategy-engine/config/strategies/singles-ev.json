@@ -1,0 +1,13 @@
+{
+  "id": "singles-ev",
+  "label": "Singles EV+",
+  "description": "Todos os mercados com edge positivo, ranqueados por EV real",
+  "type": "global_filter",
+  "params": {
+    "min_edge_pct": 3,
+    "min_prob": 0.30,
+    "rank_by": "ev_real",
+    "top_n": 30,
+    "require_market_odd": true
+  }
+}

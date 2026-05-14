@@ -6,6 +6,6 @@ for (const candidate of ['confronto_v2', 'partidas', 'matches', 'match', 'confro
   try {
     const cols = db.prepare(`PRAGMA table_info(${candidate})`).all();
     if (cols.length) console.log(`\n${candidate} cols:`, cols.map(c => c.name).join(','));
-  } catch (e) {}
+  } catch {}
 }
 db.close();

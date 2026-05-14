@@ -56,3 +56,17 @@ coverage/
 *.tmp
 *.bak
 _tmp_*
+tmp_*
+*.out
+.pids
+
+# Local scratch / DB / one-off artifacts
+scratch/
+scout.db
+final_certified_resp.json
+diag_sidecar.py
+run_sidecar.py
+start_sidecar.bat
+dev.ps1
+stop.ps1
+

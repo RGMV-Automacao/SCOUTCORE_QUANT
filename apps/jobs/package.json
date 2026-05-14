@@ -8,6 +8,7 @@
     "dotenv": "^16.4.5",
     "@scoutcore/data-access": "*",
     "@scoutcore/markets": "*",
-    "@scoutcore/calibration": "*"
+    "@scoutcore/calibration": "*",
+    "@scoutcore/superbet-scraper": "*"
   }
 }

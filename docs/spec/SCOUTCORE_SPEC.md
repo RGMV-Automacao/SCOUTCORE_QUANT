@@ -22,8 +22,8 @@
 6. [Repository Pattern e Point-in-Time](#6-repository-pattern-e-point-in-time)
 7. [Curinga — Meta-Arbiter](#7-curinga--meta-arbiter)
 8. [Calibração Isotônica (D8)](#8-calibração-isotônica)
-9. [SCOUT — auditoria IA opt-in](#9-scout--auditoria-ia-opt-in)
-10. [Bandas 10min (v1.5)](#10-bandas-10min-v15)
+9. [SCOUT — resumo determinístico opt-in](#9-scout--resumo-determinístico-opt-in)
+10. [Bandas 10min (v1.5 planejado)](#10-bandas-10min-v15-planejado)
 11. [Settlement & Self-Evaluation Loop](#11-settlement--self-evaluation-loop)
 12. [Stack Tecnológico](#12-stack-tecnológico)
 13. [Roadmap por Release](#13-roadmap-por-release)
@@ -58,7 +58,7 @@
 | P6 | **Contrato versionado SemVer.** `contract_version` em todo response. | Consumidores não quebram em upgrade minor. |
 | P7 | **Reuso máximo do legado.** Componentes do `opta-extractor` que funcionam não são reescritos, são extraídos. | Zero invenção, baixo risco. |
 | P8 | **Toda predição carrega evidências auditáveis.** O slot retorna o `evidence` — lista crua das métricas que justificam a probabilidade (médias for/against, splits casa/fora, H2H, league priors, regime). | Tela do cliente exibe os dados crus que sustentam o pick. Sem caixa-preta. |
-| P9 | **Zero bloqueio. Só calibragem.** Nenhum mercado é vetado, suspenso ou descartado pelo motor. Os 479 mercados do catálogo entram todos vivos, com `confidence` e `fair_prob` reportados honestamente. Mercados ruidosos recebem `confidence` reduzido (D13 + D14), nunca filtragem. Suspensão pontual (caso o usuário peça) entra como `options.suppress_markets[]` na request — decisão do consumidor, não do motor. | Apollo, FutMax e qualquer outro consumidor decidem o que apostar. O motor entrega o universo completo, sempre. |
+| P9 | **Zero bloqueio. Só calibragem.** Nenhum mercado é vetado, suspenso ou descartado pelo motor. Os 576 mercados do catálogo entram todos vivos, com `confidence` e `fair_prob` reportados honestamente. Mercados ruidosos recebem `confidence` reduzido (D13 + D14), nunca filtragem. Suspensão pontual (caso o usuário peça) entra como `options.suppress_markets[]` na request — decisão do consumidor, não do motor. | Apollo, FutMax e qualquer outro consumidor decidem o que apostar. O motor entrega o universo completo, sempre. |
 
 ---
 
@@ -85,19 +85,19 @@
 
 | # | Decisão | Justificativa |
 |---|---|---|
-| **D1** | Runtime único: HTTP Node 22 ESM com Python sidecar (subprocess JSON stdio). | Reaproveita 100% do legado. Latência irrelevante para pré-jogo (P95 < 500 ms). |
+| **D1** | Runtime HTTP Node 22 ESM com Python sidecar FastAPI para Engine B. | Isola ML Python do orquestrador Node. Latência pré-jogo é aceitável quando o sidecar está pré-carregado. |
 | **D2** | Persistência: SQLite WAL via `better-sqlite3` + Repository Pattern injetável. | SQLite WAL atende caso pré-jogo (read-heavy). Adapter Postgres futuro sem refatorar engines. |
 | **D3** | Catálogo de mercados em pacote SemVer `@motor4x4/markets` + `market_alias_map` opcional na entrada. | Motor é fonte de verdade. Consumidores legados (Apollo) traduzem suas chaves antigas sem fork. |
 | **D4** | Contrato versionado SemVer com `engine_signature` em todo response. | Auditável, reproduzível, comparável historicamente. |
-| **D5** | SCOUT é opt-in via `options.scout: boolean` (default `false`). | Reduz custo (GPT-4o por request) e latência. |
+| **D5** | SCOUT determinístico é opt-in via `options.scout: boolean` (default `false`). | Evita custo externo e mantém auditoria local; camada LLM fica fora do MVP até existir contrato/provedor configurado. |
 | **D6** | Plug-in de modelos via interface `EnginePlugin`. | A, B e qualquer futuro (Engine C Elo) registram-se no orquestrador. |
 | **D7** | Feature Store leve em SQLite com `feature_set` versionado. | Feast é overkill para 13 ligas × 6 temporadas. |
 | **D8** | Calibração isotônica obrigatória pós-Curinga, treinada por (família × liga) em walk-forward. | EWMA mede direção, não calibra probabilidade. Sem isotônica, Kelly quebra. |
-| **D9** | Point-in-Time enforcement no Repository (P2). | Toda leitura aceita `as_of` obrigatório; rejeita rows com `valid_from > as_of`. |
+| **D9** | Point-in-Time enforcement incremental no Repository (P2). | Leituras V2 usam `as_of`; fallback legacy gera warning `*_legacy_non_pit` e não certifica o match. `team_stat`/`feature_snapshot` com `valid_from` ainda são pendência. |
 | **D10** | Schema CORE vs EXTENSIONS. | CORE: `match`, `team_stat`, `feature_snapshot`, `calib_state`, `motor_run`. EXTENSIONS: `eventos_faixa` (habilita v1.5 — bandas 15min), `clv_history` (habilita v1.6 — feedback econômico). Motor expõe ao `/v1/markets` apenas o que o repo declarar em `capabilities()`. |
 | **D11** | **Economic Feedback Loop + Brier Calibration via Replay (Opção B — §17.4).** Motor não herda nada do legado. Replay histórico de ~14.998 partidas roda Engine A + B com nossos modelos atuais para popular `clv_history` retroativo (~10 dias de processamento). A partir daí o settlement em produção calcula `brier`, `log_loss` e `CLV` por slot. Recalibração do Curinga usa `ewma_precision = 1 − ewma_brier`. `BRIER_BOOTSTRAP_MIN_SAMPLES=30` por (família × liga); abaixo disso usa `ewma_hr` como score (UX-only) até atingir o threshold. | Brier separa quem realmente atribuiu probabilidade superior. Combinado com CLV, fecha o ciclo. Replay garante calibração 100% do nosso modelo, sem herança contaminável do motor antigo — é backtest formal disfarçado de bootstrap. |
 | **D12** | **Reversal Detection (herdada do legado).** Quando `H2H ou histórico recente ≥ reversal_streak_threshold` (default `5`) jogos no mesmo padrão (ex.: 6/6 Under), aplicar penalty `-1.8pp` no λ da família (cap `-6pp`) e adicionar `reversal_detected` em `provenance.regime_applied[]`. Detecção automatizada no Engine A; Engine B recebe como feature `reversal_streak` no `feature_snapshot`. | Sem isso, Apollo gera picks cegos a sequências longas que estatisticamente quebram (ver lesson aprendida no SP×Cruzeiro 6/6 Under quebrou → SP 2-1). É regra já backtestada e em produção no `stat-engine.cjs`. |
-| **D13** | **Market Reliability Multiplier (calibragem, não bloqueio).** `quality-gates.json.market_reliability` define `multiplier ∈ [0.5, 1.0]` por (`market_heading`, `liga`) baseado em ROI walk-forward. Aplicado a `confidence` (não filtra, não descarta). Mercados ruidosos históricos recebem `multiplier < 1.0`; mercados consistentes recebem `1.0`. Exposto em `provenance.market_reliability_multiplier`. **Nenhum mercado é bloqueado.** Consumidor (Apollo, FutMax) decide o que fazer com `confidence` baixa. | Princípio P9: motor calibra, não veta. 479 mercados ficam todos vivos. Demote/promote do legado vira escala contínua, não binária. |
+| **D13** | **Market Reliability Multiplier (calibragem, não bloqueio).** `quality-gates.json.market_reliability` define `multiplier ∈ [0.5, 1.0]` por (`market_heading`, `liga`) baseado em ROI walk-forward. Aplicado a `confidence` (não filtra, não descarta). Mercados ruidosos históricos recebem `multiplier < 1.0`; mercados consistentes recebem `1.0`. Exposto em `provenance.market_reliability_multiplier`. **Nenhum mercado é bloqueado.** Consumidor (Apollo, FutMax) decide o que fazer com `confidence` baixa. | Princípio P9: motor calibra, não veta. 576 mercados ficam todos vivos. Demote/promote do legado vira escala contínua, não binária. |
 | **D14** | **Confidence Multipliers por mercado (calibragem por classe).** Tabela em `quality-gates.json.confidence_multipliers` reduz `confidence` por classe de mercado: `corners_total: 0.82`, `cards_handicap: 0.76`, `cards_ht_handicap: 0.72`, `shots: 0.78`, `ht_goals: 0.90`, etc. Aplicado pelo Engine A; visível em `provenance.confidence_multiplier`. **Não filtra** — apenas reduz `confidence` reportado. | Refletem ruído intrínseco de cada classe. SPEC sem isso entrega `confidence` inflada em famílias mais ruidosas. |
 | **D15** | **Family engine weights são sempre não-zero e dinamizados (sem veto).** Default por família (`gols 0.42/0.58`, `escanteios 0.57/0.43`, etc.) baseado em backtest A vs B. Em v1.6+ os pesos são **redefinidos** dinamicamente por `(1 − ewma_brier_engine)` por (família, liga) após `BRIER_BOOTSTRAP_MIN_SAMPLES=100`. Pesos exclusivos `0.0` ou `1.0` não são permitidos no MVP — todo engine que cobre uma família contribui. Se um engine não cobre (`fair_odd` ausente), Curinga aplica regra `a_only` ou `b_only` no slot específico, mas o peso da família permanece. | Princípio P9: zero veto manual. O legado vetava `chutes.w_b=0.00` sem evidência atualizada — SPEC nova reabre. Brier diferencial pós-MVP pode reduzir peso de um engine para `0.05`, mas nunca zero. |
 
@@ -122,8 +122,8 @@
 | `GET` | `/v1/markets` | Catálogo canônico vigente (filtra por capabilities do repo). |
 | `GET` | `/v1/health` | engine_signature, versões, status dos engines. |
 | `GET` | `/v1/calibration/:liga` | Estado de calibração: `ewma_hr` e `clv_score` por família. |
-| `GET` | `/v1/replay/:run_id` | Reexecuta uma predição histórica a partir do `engine_signature`. |
-| `POST` | `/v1/settle/:run_id` | **Liquidação (D11).** Recebe resultado real + closing odds; o motor avalia onde acertou/errou, classifica cada slot (excellent/good/acceptable/bad/very_bad), persiste em `clv_history` e atualiza `ewma_hr` + `clv_score`. |
+| `GET` | `/v1/replay/:run_id` | Reexecuta uma predição histórica sem persistir e compara assinatura/slots quando o run salvo possui payload completo. |
+| `POST` | `/v1/settle/:run_id` | **Liquidação (D11).** Lê resultado real do repo, aceita `closing_odds` opcional, persiste em `clv_history` e atualiza `ewma_hr`/`ewma_brier`. |
 | `POST` | `/v1/settle/batch` | Liquidação em lote (cron `settlement_resolver`). |
 | `GET`  | `/v1/evaluation/:run_id` | Lê a avaliação já liquidada de um run. |
 
@@ -159,7 +159,7 @@
   },
 
   "options": {
-    "scout":           false,                 // ativa SCOUT IA
+    "scout":           false,                 // ativa resumo scout determinístico
     "include_engines": ["A", "B"],
     "min_edge_pp":     2,
     "feature_set":     "v3"
@@ -309,9 +309,9 @@
 | Garantia | Como é cumprida |
 |---|---|
 | **Backwards compatibility minor.** | v1.X só adiciona campos opcionais; nunca remove ou muda tipo. |
-| **Replay determinístico.** | Mesmo `engine_signature.hash` + mesmo input → mesmo output bit-a-bit. |
-| **Auditabilidade total.** | `motor_run` persiste request + response + engine_signature; `/v1/replay/:run_id` reexecuta. |
-| **Sem leakage temporal.** | `as_of` derivado de `match.date` − 1h; PIT enforced no repo. |
+| **Replay determinístico.** | Runs novos persistem response completo; `/v1/replay/:run_id` reexecuta sem persistir e retorna `deterministic=true/false` quando assinatura e payload são comparáveis. |
+| **Auditabilidade total.** | `motor_run` persiste request + response + engine_signature; `prediction` persiste slots por `run_id`. |
+| **Sem leakage temporal.** | `as_of` é derivado de `match.date`; o repo consulta perfis/priores com `as_of <= match.date`. Replay histórico ainda depende da qualidade dos snapshots existentes. |
 
 ---
 
@@ -347,7 +347,7 @@
 │  │           Isotonic Calibration (D8)                           │  │
 │  │                     │                                         │  │
 │  │                     ▼                                         │  │
-│  │           SCOUT (opt-in) — GPT-4o · Perplexity · Claude       │  │
+│  │           SCOUT determinístico (opt-in)                       │  │
 │  └─────────────────────┬─────────────────────────────────────────┘  │
 │                        ▼                                            │
 │  ┌───────────────────────────────────────────────────────────────┐  │
@@ -499,28 +499,11 @@ CREATE TABLE clv_history (
 );
 ```
 
-### 6.4. PIT enforcement (D9)
+### 6.4. PIT enforcement incremental (D9)
 
-```typescript
-// pseudo-código do adapter
-function getFeatureSnapshot(matchId, featureSet, asOf) {
-  const row = db.prepare(`
-    SELECT * FROM feature_snapshot
-    WHERE match_id = ? AND feature_set = ?
-      AND valid_from <= ?       -- nunca lê do futuro
-    ORDER BY valid_from DESC
-    LIMIT 1
-  `).get(matchId, featureSet, asOf.toISOString());
+**Estado real do MVP.** O repository aplica corte `as_of` em `team_profile_v2` e `league_priors`; quando cai no fallback `team_profiles` legacy, emite warning `*_legacy_non_pit` e o match não fica certificado. Ainda não existe `feature_snapshot.valid_from` populado nem `PitViolationError` hard-fail no runtime.
 
-  if (!row) return null;
-  if (new Date(row.valid_from) > asOf) {
-    throw new PitViolationError(`feature_snapshot ${matchId}/${featureSet} violates PIT`);
-  }
-  return JSON.parse(row.payload);
-}
-```
-
-Teste de regressão obrigatório no CI: backtest histórico bate com produção dentro de tolerância `1e-6`. Falha → bloqueia merge.
+**Pendência para certificação financeira.** Ativar `feature_snapshot_cache`/`team_stat` com `valid_from <= as_of`, adicionar teste de regressão em CI para backtest histórico vs produção dentro de tolerância `1e-6`, e só então trocar o modo incremental por enforcement estrito.
 
 ---
 
@@ -641,43 +624,41 @@ Teste de regressão obrigatório no CI: backtest histórico bate com produção 
 
 ---
 
-## 9. SCOUT — auditoria IA opt-in
+## 9. SCOUT — resumo determinístico opt-in
 
 **Ativação.** `options.scout: true` (default `false`). Não mistura com query string.
 
-**Cadeia de fallback.** GPT-4o → Perplexity → Claude. Falha total → `skip_reason: "all_providers_failed"`.
+**Estado real do MVP.** O pacote `@scoutcore/scout` gera um resumo determinístico sobre `ev_ranked`, `warnings`, phantom edges, caps de família e baixa confiança. Não chama GPT-4o, Perplexity ou Claude; não possui `tokens_used`; não aplica `confidence_delta`; não altera probabilidades.
 
-**ScoutOverlay (conforme `contracts.js` legado):**
+**Formato atual:**
 
 ```jsonc
 {
-  "model":         "gpt-4o",
-  "latency_ms":    1240,
-  "tokens_used":   1850,
-  "red_flags": [
-    { "market_key": "gols_total_ft_over_25",
-      "reason":     "chuva forte prevista",
-      "severity":   "medium" }
+  "version": "0.1.0",
+  "summary": "Top pick: gols_total_ft_over_1_5 @ 1.35...",
+  "notes": [
+    "phantom_edge_detected: revisar odds e lambda"
   ],
-  "slot_adjustments": [
-    { "market_key":       "gols_total_ft_over_25",
-      "confidence_delta": -0.10,
-      "rationale":        "clima reduz volume" }
-  ],
-  "narrative":   "resumo executivo",
-  "scout_score": 78,
-  "skip_reason": null
+  "top_picks": [
+    {
+      "market_key": "gols_total_ft_over_1_5",
+      "family": "gols",
+      "fair_prob": 0.8318,
+      "market_odd": 1.35,
+      "edge_pct": 12.3,
+      "confidence": 0.6675
+    }
+  ]
 }
 ```
 
-**Restrições de aplicação:**
-- `confidence_delta ∈ [-0.20, +0.15]` hard-coded; valores fora do range são clipados.
-- `severity`: `low | medium | high`.
-- SCOUT **não substitui** decisão; só anota. `confidence_delta` é aplicado pelo orquestrador APÓS a calibração isotônica e ANTES da resposta final.
+**Futuro possível.** Uma camada LLM pode ser adicionada depois como `scout_overlay`, mas só deve entrar quando houver provedor, budget, timeout, auditoria de tokens e contrato explícito de que ela não substitui o modelo quantitativo.
 
 ---
 
-## 10. Bandas 10min (v1.5)
+## 10. Bandas 10min (v1.5 planejado)
+
+**Estado real do MVP.** A base possui `eventos_faixa` e o repository consegue ler faixas, mas o catálogo vivo ainda não expõe mercados `b{a}_{b}` e o settlement atual não liquida por minutagem granular. A tabela abaixo é desenho-alvo, não funcionalidade certificada do MVP.
 
 ### 10.1. Mercados canônicos suportados
 
@@ -723,11 +704,12 @@ O motor não é só preditor — é **avaliador de si mesmo**. Toda predição q
 
 ```
   D-1   FutMax/Apollo → POST /v1/predict          → motor_run salvo (run_id, engine_signature)
+  D-0   T-5min → job:snapshot-closing              → audit/closing-*.json com odds frescas de `odds`
   D-0   jogo acontece
   D+1   FutMax atualiza opta.db (extração)
   D+1   cron 05:00 BRT → settlement_resolver:
           ├─ varre motor_run sem settled_at, > 12h após match.date
-          ├─ POST /v1/settle/:run_id  (interno) com result+closing_odds
+          ├─ POST /v1/settle/:run_id  (interno) com closing_odds quando disponível
           ├─ motor avalia cada slot, persiste clv_history
           └─ calib_state recalibra (ewma_hr e clv_score)
   D+1   cron 04:00 BRT (dia seguinte) → clv_weighted_recalib
@@ -740,23 +722,9 @@ O motor não é só preditor — é **avaliador de si mesmo**. Toda predição q
 ```jsonc
 {
   "contract_version": "1.0.0",
-  "result": {
-    "score":      "2-1",
-    "score_ht":   "1-0",
-    "stats_source": "opta:2877441",       // motor lê do repo se preenchido
-    "stats": {                              // OU inline, fallback se source ausente
-      "escanteios_total":     9,
-      "escanteios_home":      6,
-      "escanteios_away":      3,
-      "chutes_total":        24,
-      "chutes_alvo_total":    9,
-      "cartoes_amar_total":   4,
-      "escanteios_b0_10":     1
-    }
-  },
   "closing_odds": {
-    "gols_total_ft_over_25": 1.78,
-    "btts_sim":              1.70
+    "gols_total_ft_over_2_5": 1.78,
+    "btts_total_ft_sim":      1.70
   }
 }
 ```
@@ -854,11 +822,11 @@ A atualização é por **engine vencedor** do slot (`provenance.divergence_resol
 
 | Garantia | Como |
 |---|---|
-| Idempotência | `run_id` + `market_key` é PK em `clv_history`. Re-settle do mesmo run não duplica linha. |
-| Auditoria | `evaluation` completa fica em `motor_run.evaluation_payload` (coluna nova). |
-| Replay determinístico | Como o `engine_signature` é congelado no predict, mesmo após meses dá pra reabrir e auditar. |
-| Sanity da closing line | Hard reject se `closing_odd` fora de `[0.5×market_odd, 2×market_odd]` → CLV nulo, mas hit/miss ainda conta. |
-| Não corrompe stats | Se `stats_source` aponta para id ausente, motor responde 404; nenhum efeito colateral. |
+| Idempotência | `clv_history.run_id + market_key` possui índice único para novos settlements. Re-settle do mesmo run não duplica linha útil. |
+| Auditoria | `motor_run` persiste request e response; runs novos têm payload completo para comparação via `/v1/replay/:run_id`. |
+| Replay determinístico | Quando `engine_signature.hash` bate e o payload salvo tem slots, `/v1/replay/:run_id` retorna `deterministic=true/false`. |
+| Closing line | `job:snapshot-closing` gera JSON a partir da tabela `odds` e impõe frescor padrão de 15min. Se `closing_odds` for omitido, `odd_close` e `clv_pct` ficam nulos; hit/miss e EWMA continuam. |
+| Não corrompe stats | O settler lê resultados de `partidas`/`eventos_faixa`; ausência de dados retorna `no_data` sem efeito colateral no slot. |
 
 ### 11.7. O que o consumidor ganha
 
@@ -878,12 +846,12 @@ A atualização é por **engine vencedor** do slot (`provenance.divergence_resol
 | Abstração | Repository Pattern (`MatchRepository`) | Adapter Postgres futuro sem refatorar engines. |
 | Motor estatístico | `stat-engine.cjs` + `model-a.js` | Reaproveitamento direto do legado. |
 | ML | Python 3.11 + XGBoost + LightGBM + Optuna | Já em produção em `ml/ml_predictor.py`. |
-| Bridge Node↔Python | `spawn` JSON via stdio + cache 30 min | Padrão `ml-service.js`. |
+| Bridge Node↔Python | HTTP para sidecar FastAPI local + timeout/fallback | Bridge nunca lança; degrada para Engine A quando B está indisponível. |
 | Catálogo | Pacote pnpm `@motor4x4/markets` | Promove `core/markets.cjs` para SemVer. |
 | Validação contrato | Zod (Node) + Pydantic (Python) do mesmo JSON Schema | Consistência ponta a ponta. |
 | Observabilidade | Pino (logs) + OpenTelemetry traces | Padrão Node moderno. |
 | Testes | Jest ESM + walk-forward backtest harness | Já existem no legado. |
-| IA Scout (opt-in) | GPT-4o (primário), Perplexity, Claude | Já implementado. |
+| Scout (opt-in) | Resumo determinístico local | Já implementado; LLM scout não faz parte do MVP atual. |
 | Containerização | Docker multi-stage (`node:22-alpine` + `python:3.11-slim`) | Padrão atual. |
 
 ---
@@ -896,7 +864,7 @@ A atualização é por **engine vencedor** do slot (`provenance.divergence_resol
 | **v1.0** | Migração Apollo32 + ApolloFinalV2. Pacote `@motor4x4/markets` interno. Isotônica D8 ativa. **Endpoint `/v1/settle` ativo** — começa a coletar `clv_history`. | 3 consumidores em prod, zero incidentes; `clv_history` com ≥ 500 linhas. |
 | **v1.1** | Adapter Postgres opcional. `/v1/calibration/:liga` exposto. | 1 consumidor em Postgres. |
 | **v1.2** | Batch endpoint via gRPC local (não `spawn`). | P95 batch-50 < 5 s. |
-| **v1.3** | Endpoint `/v1/replay/:run_id`. Job CI de regressão PIT bit-a-bit. | 100% dos `motor_run` replicáveis dentro de tolerância 1e-6. |
+| **v1.3** | Endpoint `/v1/replay/:run_id` implementado para runs com payload completo. Job CI de regressão PIT bit-a-bit ainda pendente. | Runs novos retornam `signature_match`, `comparable` e `deterministic`; CI futuro deve exigir tolerância 1e-6. |
 | **v1.4** | Stacking Meta-Learner opcional. Gate: `≥800 jogos efetivos por (família × liga) após walk-forward holdout` AND `Brier melhor que regras em 30d de produção real` AND par está nas 6 ligas principais. | Stacking ativo em ≥3 famílias×liga sem regressão de CLV. |
 | **v1.5** | **Bandas 10min** — 4 mercados canônicos × 9 bandas × 3 estatísticas. λ por banda no Engine A. Features de banda no Engine B. Catálogo bumpado para 1.5.0. | Backtest pré-prod: hit-rate Total Under 1.5 escanteios 0-10 ≥ 65% nas 6 ligas principais. |
 | **v1.6** | **Economic Feedback Loop (D11)** — `settlement_resolver` + `clv_history` + `clv_weighted_recalib` + score do Curinga muda para `α·ewma + (1-α)·clv_score`. | CLV médio dos slots `certified=true` ≥ 0 em 30 dias de produção. |
@@ -927,7 +895,7 @@ O Motor 4x4 **não produz** estes itens diretamente — ele entrega o universo d
 |---|---|---|
 | **Apollo 32 — Estratégia Yankee** | Quadras (4 picks) montadas via combinador yankee, target odd combinada 2.50–3.50, desconto flat 0.854. | `slots[]` com `ev_pct` por leg, `confidence`, `family`, `market_heading`. Endpoint: `/v1/predict/batch`. |
 | **Bom Retiro — Estratégia Técnica** | Picks únicos selecionados por critérios técnicos (sample mínimo, regime ausente, evidence forte). | Mesmo `slots[]` + `evidence` completo (drivers, splits, h2h). |
-| **Lista completa EV+** | Todos os mercados (479) ordenados por `ev_pct > 0` por confronto. | `/v1/predict` com **todos os slots** retornados, sem filtragem (P9). Consumidor ordena. |
+| **Lista completa EV+** | Todos os mercados (576) ordenados por `ev_pct > 0` por confronto. | `/v1/predict` com **todos os slots** retornados, sem filtragem (P9). Consumidor ordena. |
 | **Duplas EV+ por confronto** | Pares de slots EV+ do mesmo confronto, com avaliação de correlação. | `slots[]` + `correlation_hint` opcional no `evidence` (ex.: `Over 2.5` e `BTTS Sim` correlacionam). v1.4. |
 | **Bingo dos 7 melhores** | Ranking dos 7 picks com maior `score = ev_pct × confidence × reliability` em todos os jogos do dia. | `/v1/predict/batch` retornando todos os jogos; cliente faz o ranking. |
 
@@ -970,7 +938,7 @@ O Motor 4x4 **não produz** estes itens diretamente — ele entrega o universo d
 
 ### 16.5. Camada SCOUT (opt-in)
 
-✅ **Não-bloqueante.** Roda em paralelo aos engines via `Promise.all`. Timeout 20s default; se estourar, slot retorna sem `scout_overlay`. Custo mitigado por ser opt-in (`options.scout: false` por default — D5).
+✅ **Não-bloqueante por simplicidade.** O MVP atual executa um resumo determinístico local após o ranking. Não há chamada externa nem `scout_overlay` LLM. Se uma camada LLM for adicionada, ela deve ter timeout, orçamento por cliente e fallback explícito sem alterar probabilidades.
 
 ### 16.6. Limites de produção (MVP)
 
@@ -1050,8 +1018,9 @@ VACUUM;
 3. **Criar tabelas próprias do motor** em `scout.db`:
 
 ```sql
-CREATE TABLE motor_run_v2     (...);  -- nova predição completa com provenance
-CREATE TABLE calib_state_v2   (...);  -- EWMA + brier do nosso modelo
+CREATE TABLE motor_run        (...);  -- request/response + engine_signature
+CREATE TABLE prediction       (...);  -- slots persistidos por run_id/market_key
+CREATE TABLE calib_state      (...);  -- EWMA + brier do nosso modelo
 CREATE TABLE isotonic_blob    (...);  -- calibradores serializados
 CREATE TABLE clv_history      (...);  -- CLV settlement nosso
 CREATE TABLE feature_snapshot_cache (...);
@@ -1179,21 +1148,14 @@ Para reprodutibilidade (P5):
 ```json
 {
   "engine_signature": {
-    "version": "1.0.0",
-    "hash": "sha256:...",
-    "data_snapshot": {
-      "scout_db_mtime":  "2026-05-07T03:44:53Z",
-      "scout_db_size":   1532190720,
-      "n_partidas":      14998,
-      "n_team_profiles": 2179,
-      "n_odds":          1323673,
-      "replay_completed_at": "2026-05-17T08:12:00Z"
-    }
+    "hash": "9f2e...",
+    "calib_snapshot_id": "a7c1...",
+    "data_snapshot_hash": "b42d..."
   }
 }
 ```
 
-Replay (`/v1/replay/:run_id`) verifica se `scout.db.mtime ≥` snapshot. Se compactou/migrou, retorna `replay_unavailable`.
+**Estado real do MVP.** `calib_snapshot_id` é derivado de `calib_state` + `isotonic_blob`; `data_snapshot_hash` é derivado dos inputs efetivamente usados na run (`match`, temporada, `profile_home`, `profile_away`, `league_priors_ft`). Assim, replay de runs novos deixa de ser apenas hash de código/modelos. Ainda não há snapshot imutável do banco inteiro nem validação por `scout.db.mtime`; essa camada continua pendência operacional para SOX completo.
 
 ### 17.8. Caminho evolutivo
 
@@ -1297,14 +1259,14 @@ Decisões de negócio não-técnicas que ficam fora do escopo desta SPEC:
 |---|---|---|
 | 1 | Política de aposentadoria de versões: quanto tempo manter `contract_version: "1.0.0"` depois de sair `2.0.0`? | 6 meses + 1 release de aviso (`Deprecation` header). |
 | 2 | SLA para consumidores B2B externos: qual P95 prometer? | 800 ms single, 5 s batch-50. |
-| 3 | Custo do SCOUT (GPT-4o): quem paga? | Bilhetagem por `client.system` + `tokens_used` no diagnostics. |
+| 3 | Custo de um eventual SCOUT LLM: quem paga? | Pendente. Só adicionar quando houver bilhetagem por `client.system` + `tokens_used` no diagnostics. |
 | 4 | Domínio do `@motor4x4/markets`: npm público, registry privado, monorepo? | Privado (GitHub Packages) até v2.0. |
 | 5 | Quem mantém `quality-gates.json` e `calib_map`: automatizado ou revisão humana? | Automatizado walk-forward + guard-rail manual para deltas > 15% (notifica Slack). |
 | 6 | Source of truth para closing line do CLV (D11): `bookline` (Superbet) ou consenso multi-house? | Começar com `bookline` snapshot 5 min pré-kickoff. v2.0 adiciona consenso. |
 
 ---
 
-**Resumo executivo em uma linha:** o Motor 4x4 é o que **já roda** dentro do `opta-extractor`, **destacado em serviço HTTP versionado**, **lendo o `opta.db` legado read-only (§17)**, **com contrato auditável (provenance + engine_signature)**, **catálogo SemVer com 479 mercados todos vivos (P9 zero-bloqueio)**, **persistência abstrata**, **calibração isotônica obrigatória**, **PIT enforced**, **brier diferencial calibrável desde o MVP via 6.318 predições legadas (§17.6)**, **economic feedback loop com brier+CLV (v1.6)**, **evidence pack auditável (P8) montado direto sobre `team_profiles` legado**, **reversal detection automática (D12)**, **market reliability como calibragem contínua (D13)** e **family weights sempre não-zero (D15)**. Zero invenção, zero veto, zero extração duplicada, máxima reutilização, pronto para B2B.
+**Resumo executivo honesto:** o Motor 4x4 já roda como serviço HTTP versionado, com Engine A, sidecar B opcional, Curinga, `engine_signature`, persistência de runs/slots, settlement com Brier/CLV quando houver closing odds, evidence pack e scout determinístico. Ainda não está pronto para B2B financeiro sem reforçar PIT, isotônica por família, cobertura B, captura automática de closing line e CI E2E.
 
 ---
 
@@ -1320,7 +1282,7 @@ Auditoria profunda do legado em [opta-extractor/src/motor/](file:///C:\Users\Rog
 | `model-a.js` (Poisson DC + EWMA) | ✅ absorvido | §5 Engine A |
 | `model-b.js` (bridge Python) | ✅ absorvido | §5 Engine B |
 | `curinga.js` (4 regras) | ✅ absorvido + refinado | §7 Curinga (score: D11) |
-| `scout.js` (GPT-4o→Claude→Perplexity) | ✅ absorvido | §9 Scout |
+| `scout.js` (GPT-4o→Claude→Perplexity) | ⏳ não absorvido no MVP | §9 Scout hoje é determinístico; LLM fica pendente. |
 | `model-a-calibration.js` (EWMA persist) | ✅ absorvido | §6 calib_state schema |
 | `motor-db.js` (INSERT predictions) | ✅ evolução | §6 motor_run table + replay |
 | `contracts.js` (JSDoc types) | ✅ evolução (Zod + Pydantic) | §4 contrato I/O |

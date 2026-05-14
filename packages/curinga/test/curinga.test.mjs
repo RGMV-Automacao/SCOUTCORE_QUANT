@@ -13,19 +13,20 @@ test('B unavailable → A pure with provenance', () => {
   assert.equal(out[0].provenance.divergence_resolved_by, 'engine_b_unavailable');
 });
 
-test('B available → weighted average', () => {
-  const a = [{ market_key: 'gols_total_ft_over_2_5', fair_prob: 0.60, certified: true, provenance: {} }];
-  const b = [{ market_key: 'gols_total_ft_over_2_5', fair_prob: 0.40 }];
+test('B available → calibration weighted and flagged when divergence is high', () => {
+  const a = [{ market_key: 'gols_total_ft_over_2_5', family: 'gols', fair_prob: 0.60, certified: true, provenance: {} }];
+  const b = [{ market_key: 'gols_total_ft_over_2_5', fair_prob: 0.40, certified: true }];
   const out = combine({ slotsA: a, slotsB: b });
   assert.equal(out.length, 1);
-  assert.ok(Math.abs(out[0].fair_prob - 0.5) < 1e-9);
+  assert.ok(Math.abs(out[0].fair_prob - 0.52) < 1e-9);
   assert.equal(out[0].provenance.fair_prob_a, 0.60);
   assert.equal(out[0].provenance.fair_prob_b, 0.40);
-  assert.equal(out[0].provenance.weight_a, 0.5);
-  assert.equal(out[0].provenance.weight_b, 0.5);
-  assert.equal(out[0].provenance.divergence_resolved_by, 'weighted_average');
+  assert.equal(out[0].provenance.weight_a, 0.6);
+  assert.equal(out[0].provenance.weight_b, 0.4);
+  assert.equal(out[0].provenance.divergence_resolved_by, 'flagged_divergence');
   assert.equal(out[0].provenance.divergence_pp, 20);
   assert.equal(out[0].provenance.divergence_flag, true);
+  assert.equal(out[0].certified, false);
 });
 
 test('A-only (no B counterpart) → kept with engine_b_no_slot', () => {

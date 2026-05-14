@@ -1,0 +1,12 @@
+{
+  "id": "bingo-escanteios",
+  "label": "Bingo Escanteios",
+  "description": "Top N picks de escanteios por edge",
+  "type": "family_filter",
+  "params": {
+    "families": ["escanteios"],
+    "rank_by": "edge_pct",
+    "top_n": 7,
+    "min_edge_pct": 3
+  }
+}

@@ -87,9 +87,9 @@ export function deserialize(json) {
   try { return JSON.parse(json); } catch { return null; }
 }
 
-/** Chave canônica de blob por (family, direction, liga). */
-export function isoKey({ family, direction, liga }) {
-  return `${family}::${direction}::${liga ?? '*'}`;
+/** Chave canônica de blob por (family, period, direction, liga). */
+export function isoKey({ family, period, direction, liga }) {
+  return `${family}::${period ?? 'FT'}::${direction}::${liga ?? '*'}`;
 }
 
 /**
@@ -98,17 +98,27 @@ export function isoKey({ family, direction, liga }) {
  */
 export function loadIsotonicMap(db) {
   const map = new Map();
+  // Detecta presença da coluna `period` (migration 011) para retro-compat.
+  let hasPeriod = false;
   try {
-    const rows = db.prepare(
-      'SELECT family, direction, liga, blob_bytes, n_samples, fit_at FROM isotonic_blob'
-    ).all();
+    const cols = db.prepare(`PRAGMA table_info(isotonic_blob)`).all();
+    hasPeriod = cols.some((c) => c.name === 'period');
+  } catch {
+    return map;
+  }
+  try {
+    const sql = hasPeriod
+      ? 'SELECT family, period, direction, liga, blob_bytes, n_samples, fit_at FROM isotonic_blob'
+      : 'SELECT family, direction, liga, blob_bytes, n_samples, fit_at FROM isotonic_blob';
+    const rows = db.prepare(sql).all();
     for (const r of rows) {
       const blob = typeof r.blob_bytes === 'string'
         ? r.blob_bytes
         : (r.blob_bytes ? Buffer.from(r.blob_bytes).toString('utf8') : null);
       const model = deserialize(blob);
       if (!model) continue;
-      map.set(isoKey({ family: r.family, direction: r.direction, liga: r.liga }), {
+      const period = hasPeriod ? r.period : 'FT';
+      map.set(isoKey({ family: r.family, period, direction: r.direction, liga: r.liga }), {
         model, n_samples: r.n_samples, fit_at: r.fit_at,
       });
     }
@@ -118,11 +128,12 @@ export function loadIsotonicMap(db) {
   return map;
 }
 
-/** Resolve modelo: tenta liga específica, depois global ('*'). */
-export function getIsotonic(map, { family, direction, liga }) {
-  const specific = map.get(isoKey({ family, direction, liga }));
+/** Resolve modelo: tenta (liga,period) específico, depois global ('*',period). */
+export function getIsotonic(map, { family, period, direction, liga }) {
+  const per = period ?? 'FT';
+  const specific = map.get(isoKey({ family, period: per, direction, liga }));
   if (specific && specific.n_samples >= MIN_SAMPLES) return specific;
-  const global = map.get(isoKey({ family, direction, liga: '*' }));
+  const global = map.get(isoKey({ family, period: per, direction, liga: '*' }));
   if (global && global.n_samples >= MIN_SAMPLES) return global;
   return null;
 }
@@ -154,14 +165,29 @@ export function applyIsotonicToSlot(slot, isoEntry) {
 }
 
 /** Salva (upsert) blob isotônico para uma chave. */
-export function saveIsotonicBlob(db, { family, direction, liga, model, n_samples }) {
+export function saveIsotonicBlob(db, { family, period, direction, liga, model, n_samples }) {
   const blob = serialize(model);
-  db.prepare(
-    `INSERT INTO isotonic_blob (family, direction, liga, blob_bytes, n_samples, fit_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(family, direction, liga) DO UPDATE SET
-       blob_bytes=excluded.blob_bytes,
-       n_samples=excluded.n_samples,
-       fit_at=excluded.fit_at`
-  ).run(family, direction, liga ?? '*', blob, n_samples);
+  const per = period ?? 'FT';
+  // Detecta esquema com coluna `period` (migration 011). Se ausente, segue PK antiga.
+  const cols = db.prepare(`PRAGMA table_info(isotonic_blob)`).all();
+  const hasPeriod = cols.some((c) => c.name === 'period');
+  if (hasPeriod) {
+    db.prepare(
+      `INSERT INTO isotonic_blob (family, liga, period, direction, blob_bytes, n_samples, fit_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(family, liga, period, direction) DO UPDATE SET
+         blob_bytes=excluded.blob_bytes,
+         n_samples=excluded.n_samples,
+         fit_at=excluded.fit_at`
+    ).run(family, liga ?? '*', per, direction, blob, n_samples);
+  } else {
+    db.prepare(
+      `INSERT INTO isotonic_blob (family, direction, liga, blob_bytes, n_samples, fit_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(family, direction, liga) DO UPDATE SET
+         blob_bytes=excluded.blob_bytes,
+         n_samples=excluded.n_samples,
+         fit_at=excluded.fit_at`
+    ).run(family, direction, liga ?? '*', blob, n_samples);
+  }
 }

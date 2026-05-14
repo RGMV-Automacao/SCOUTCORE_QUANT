@@ -5,19 +5,20 @@
   "type": "module",
   "main": "src/index.mjs",
   "dependencies": {
-    "fastify": "^5.0.0",
-    "dotenv": "^16.4.5",
-    "better-sqlite3": "^11.3.0",
+    "@fastify/cors": "^11.2.0",
+    "@scoutcore/calibration": "*",
     "@scoutcore/contracts": "*",
-    "@scoutcore/markets": "*",
+    "@scoutcore/curinga": "*",
     "@scoutcore/data-access": "*",
     "@scoutcore/engine-a": "*",
     "@scoutcore/engine-b-bridge": "*",
-    "@scoutcore/curinga": "*",
     "@scoutcore/evidence": "*",
     "@scoutcore/isotonic": "*",
+    "@scoutcore/markets": "*",
     "@scoutcore/quality-gates": "*",
-    "@scoutcore/calibration": "*",
-    "@scoutcore/scout": "*"
+    "@scoutcore/scout": "*",
+    "better-sqlite3": "^11.3.0",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.0.0"
   }
 }

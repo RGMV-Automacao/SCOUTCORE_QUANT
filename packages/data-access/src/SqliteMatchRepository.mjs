@@ -63,6 +63,12 @@ export class SqliteMatchRepository {
          WHERE id_confronto = ?
          ORDER BY time, faixa`),
 
+      getMatchesByDateRange: this.db.prepare(`
+        SELECT id_confronto, liga, home_team, away_team, data_partida, hora_partida
+          FROM partidas
+         WHERE date(data_partida) >= date(?) AND date(data_partida) <= date(?)
+         ORDER BY data_partida ASC, hora_partida ASC`),
+
       getTeamProfileLegacy: this.db.prepare(`
         SELECT * FROM team_profiles
          WHERE team = ? AND liga IN (SELECT value FROM json_each(?))
@@ -146,6 +152,10 @@ export class SqliteMatchRepository {
     return this.s.getMatchesForTeam.all(ligas, team, team, asOfDate, limit);
   }
 
+  getMatchesByDateRange(startIso, endIso) {
+    return this.s.getMatchesByDateRange.all(startIso, endIso);
+  }
+
   /**
    * Bandas 10min de um confronto (eventos_faixa).
    * Retorna { home: [9 bands], away: [9 bands] } com nulls se faltar.
@@ -174,8 +184,8 @@ export class SqliteMatchRepository {
     return null;
   }
 
-  getCalibState({ engine, family, liga }) {
-    return this.s.getCalib.get(engine, family, liga) ?? null;
+  getCalibState({ engine, family, direction = 'over', liga }) {
+    return this.s.getCalib.get(engine, family, direction, liga) ?? null;
   }
 
   getLeaguePriors({ liga, temporada, period, asOf }) {
@@ -194,9 +204,9 @@ export class SqliteMatchRepository {
     return this.s.upsertLeaguePriors.run(liga, temporada, period, JSON.stringify(payload), asOf);
   }
 
-  upsertCalibState({ engine, family, liga, ewma_hr, ewma_brier, clv_score, isotonic_blob, isotonic_version, sample_size }) {
+  upsertCalibState({ engine, family, direction = 'over', liga, ewma_hr, ewma_brier, clv_score, isotonic_blob, isotonic_version, sample_size }) {
     return this.s.upsertCalib.run(
-      engine, family, liga,
+      engine, family, direction, liga,
       ewma_hr ?? 0,
       ewma_brier ?? null,
       clv_score ?? null,

@@ -1,0 +1,12 @@
+{
+  "id": "bingo-cartoes",
+  "label": "Bingo Cartões",
+  "description": "Top N picks de cartões por edge",
+  "type": "family_filter",
+  "params": {
+    "families": ["cartoes"],
+    "rank_by": "edge_pct",
+    "top_n": 7,
+    "min_edge_pct": 2
+  }
+}

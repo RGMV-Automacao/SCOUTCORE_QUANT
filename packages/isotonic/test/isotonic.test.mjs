@@ -1,15 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
-import { fit, predict, saveIsotonicBlob, loadIsotonicMap, getIsotonic, applyIsotonicToSlot, isoKey, MIN_SAMPLES } from '../src/index.mjs';
+import { fit, predict, saveIsotonicBlob, loadIsotonicMap, getIsotonic, applyIsotonicToSlot, isoKey } from '../src/index.mjs';
 
 function makeDB() {
   const db = new Database(':memory:');
   db.exec(`CREATE TABLE isotonic_blob (
-    family TEXT NOT NULL, liga TEXT NOT NULL, direction TEXT NOT NULL,
+    family TEXT NOT NULL, liga TEXT NOT NULL, period TEXT NOT NULL DEFAULT 'FT', direction TEXT NOT NULL,
     blob_bytes BLOB NOT NULL, n_samples INTEGER NOT NULL,
     fit_at TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (family, liga, direction)
+    PRIMARY KEY (family, liga, period, direction)
   )`);
   return db;
 }
@@ -37,9 +37,9 @@ test('save+load round-trip por chave', () => {
   const probs = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8];
   const out   = [0,   0,   0,   1,   1,   1,   1];
   const m = fit(probs, out);
-  saveIsotonicBlob(db, { family: 'gols', direction: 'over', liga: 'BRA1', model: m, n_samples: 50 });
+  saveIsotonicBlob(db, { family: 'gols', period: 'FT', direction: 'over', liga: 'BRA1', model: m, n_samples: 50 });
   const map = loadIsotonicMap(db);
-  const entry = map.get(isoKey({ family: 'gols', direction: 'over', liga: 'BRA1' }));
+  const entry = map.get(isoKey({ family: 'gols', period: 'FT', direction: 'over', liga: 'BRA1' }));
   assert.ok(entry, 'entry existe');
   assert.equal(entry.n_samples, 50);
   assert.deepEqual(entry.model.x, m.x);
@@ -49,19 +49,19 @@ test('getIsotonic: liga específica antes de global', () => {
   const db = makeDB();
   const m1 = fit([0.3, 0.5, 0.7], [0, 1, 1]);
   const m2 = fit([0.4, 0.6, 0.8], [1, 0, 1]);
-  saveIsotonicBlob(db, { family: 'gols', direction: 'over', liga: 'BRA1', model: m1, n_samples: 30 });
-  saveIsotonicBlob(db, { family: 'gols', direction: 'over', liga: '*',    model: m2, n_samples: 100 });
+  saveIsotonicBlob(db, { family: 'gols', period: 'FT', direction: 'over', liga: 'BRA1', model: m1, n_samples: 30 });
+  saveIsotonicBlob(db, { family: 'gols', period: 'FT', direction: 'over', liga: '*',    model: m2, n_samples: 100 });
   const map = loadIsotonicMap(db);
-  const e = getIsotonic(map, { family: 'gols', direction: 'over', liga: 'BRA1' });
+  const e = getIsotonic(map, { family: 'gols', period: 'FT', direction: 'over', liga: 'BRA1' });
   assert.deepEqual(e.model.x, m1.x);
 });
 
 test('getIsotonic: abaixo de MIN_SAMPLES retorna null', () => {
   const db = makeDB();
   const m = fit([0.3, 0.5, 0.7], [0, 1, 1]);
-  saveIsotonicBlob(db, { family: 'gols', direction: 'over', liga: 'BRA1', model: m, n_samples: 5 });
+  saveIsotonicBlob(db, { family: 'gols', period: 'FT', direction: 'over', liga: 'BRA1', model: m, n_samples: 5 });
   const map = loadIsotonicMap(db);
-  const e = getIsotonic(map, { family: 'gols', direction: 'over', liga: 'BRA1' });
+  const e = getIsotonic(map, { family: 'gols', period: 'FT', direction: 'over', liga: 'BRA1' });
   assert.equal(e, null);
 });
 

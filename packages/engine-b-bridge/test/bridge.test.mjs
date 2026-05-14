@@ -1,7 +1,7 @@
 // engine-b-bridge test — fallbacks honestos quando sidecar offline
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { predictBatch, ping, ENGINE_B_VERSION } from '../src/index.mjs';
+import { predictBatch, ENGINE_B_VERSION } from '../src/index.mjs';
 
 test('ENGINE_B_VERSION exported', () => {
   assert.equal(typeof ENGINE_B_VERSION, 'string');
