@@ -41,8 +41,9 @@ export function registerPredict(app, { repo }) {
  * Núcleo do predict, isolado para reuso (batch, jobs, replay).
  * Retorna o response normal OU `{ __error: true, __status, __body }` em erro.
  */
-export async function runPredict({ repo, body, log = console, persist = true, run_id: callerRunId }) {
+export async function runPredict({ repo, body, log = console, persist = true, run_id: callerRunId, onSubPhase }) {
     const t0 = Date.now();
+    const emit = (phase) => { try { onSubPhase?.(phase); } catch { /* observador opcional, nunca quebra */ } };
     const parsed = safeParse(PredictRequestZ, body);
     if (!parsed.ok) {
       return { __error: true, __status: 400, __body: { error: 'invalid_request', issues: parsed.errors } };
@@ -56,6 +57,7 @@ export async function runPredict({ repo, body, log = console, persist = true, ru
     const suppressedMarkets = new Set(r.options.suppress_markets ?? []);
 
     // 1. Lookups (sem inventar fallback silencioso).
+    emit('lookups');
     const profileHome = repo.getTeamProfile({ team: m.home, liga: m.liga, temporada, side: 'home', asOf });
     const profileAway = repo.getTeamProfile({ team: m.away, liga: m.liga, temporada, side: 'away', asOf });
     const priorsFt    = repo.getLeaguePriors({ liga: m.liga, temporada, period: 'FT', asOf });
@@ -82,6 +84,7 @@ export async function runPredict({ repo, body, log = console, persist = true, ru
     }
 
     // 2. Engine A — só roda se inputs certificados. Sem inputs, sem números.
+    emit('engine_a');
     const tA = Date.now();
     let aOut = { slots: [] };
     if (certifiedInputs) {
@@ -105,6 +108,7 @@ export async function runPredict({ repo, body, log = console, persist = true, ru
     // 3. Engine B (sidecar Python; falha → degrada para A puro)
     let slotsB = null, tBms = null;
     if (r.options.include_engines.includes('B')) {
+      emit('engine_b');
       const tB = Date.now();
       const bOut = await engineB.predictBatch({
         liga: m.liga, home: m.home, away: m.away, data: m.date,
@@ -115,6 +119,7 @@ export async function runPredict({ repo, body, log = console, persist = true, ru
     }
 
     // 4. Curinga combine — pesos dinâmicos por (family, liga) via ewma_brier
+    emit('curinga');
     const tC = Date.now();
     const calibMapB = loadCalibrationMap(repo.db, 'B');
     const curingaCalibMap = buildCuringaCalibMap(calibMap, calibMapB, m.liga);
@@ -127,6 +132,7 @@ export async function runPredict({ repo, body, log = console, persist = true, ru
     const tCms = Date.now() - tC;
 
     // 5. Evidence + odds annotation + Quality-Gates + Isotonic + Calibration EWMA
+    emit('evidence_gates');
     const qgGates = QG.getGates();
     const isoMap = loadIsotonicMap(repo.db);
     // Contexto de evidência por confronto (1 vez): h2h, splits, league_priors.
@@ -185,6 +191,7 @@ export async function runPredict({ repo, body, log = console, persist = true, ru
     // 6. EV ranking — score = edge_pct ajustado por confidence.
     //    Aplica family_cap (qg.json) limitando top-N por família para
     //    diversificar o ranking final (evita um único mercado dominante).
+    emit('ev_rank');
     const slotByKey = new Map(combined.map((s) => [s.market_key, s]));
     const scored = combined
       .filter((s) =>

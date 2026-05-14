@@ -20,6 +20,39 @@ export function registerSettleAdmin(app, { repo }) {
     }
   });
 
+  // POST /v1/settle/:run_id/repair — RESET + reliquida (Bloco 5.1)
+  // Caso de uso: regras de settlement mudaram e queremos reprocessar um run
+  // já fechado para refletir as regras atuais. Limpa result/settled_at de
+  // todas as predictions do run e roda o settler de novo.
+  // Exige confirm=true no body para evitar curl acidental.
+  app.post('/v1/settle/:run_id/repair', async (req, reply) => {
+    const { run_id } = req.params;
+    const { confirm } = req.body ?? {};
+    if (confirm !== true) {
+      return reply.code(400).send({ error: 'confirm_required', hint: 'set confirm:true in body' });
+    }
+    const exists = repo.db.prepare('SELECT 1 FROM prediction WHERE run_id = ? LIMIT 1').get(run_id);
+    if (!exists) return reply.code(404).send({ error: 'run_not_found_or_no_predictions' });
+    try {
+      const reset = repo.db.prepare(
+        `UPDATE prediction
+            SET result = NULL,
+                settled_at = NULL
+          WHERE run_id = ?`
+      ).run(run_id);
+      const out = settleJob(repo.db, { run_id, dryRun: false, closingOdds: null });
+      return {
+        run_id,
+        mode: 'repair',
+        reset_predictions: reset.changes,
+        ...out,
+      };
+    } catch (e) {
+      app.log.error({ err: e.message, run_id }, 'settle_repair_failed');
+      return reply.code(500).send({ error: 'repair_failed', message: e.message });
+    }
+  });
+
   // POST /v1/settle/batch — liquida por data ± liga (assíncrono)
   app.post('/v1/settle/batch', async (req, reply) => {
     const body = req.body ?? {};

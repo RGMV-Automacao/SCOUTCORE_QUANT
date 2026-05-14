@@ -21,6 +21,7 @@ class RunProgressStore {
       run_id: runId,
       status: 'running',
       phase: 'discover',
+      sub_phase: null,
       date_start, date_end,
       total_matches,
       matches_done: 0,
@@ -43,6 +44,7 @@ class RunProgressStore {
     if (!r) return;
     r.status = error ? 'failed' : 'done';
     r.phase = error ? 'failed' : 'done';
+    r.sub_phase = null;
     r.current_match = null;
     r.finished_at = Date.now();
     r.updated_at = r.finished_at;
@@ -293,7 +295,13 @@ export function registerRuns(app, { repo }) {
           options: { include_engines: ['A'] },
         };
 
-        const out = await runPredict({ repo, body: payload, log: app.log, run_id: runId });
+        const out = await runPredict({
+          repo,
+          body: payload,
+          log: app.log,
+          run_id: runId,
+          onSubPhase: (sp) => RUN_PROGRESS.update(runId, { sub_phase: sp }),
+        });
 
         if (!out.__error && out.slots) {
           for (const s of out.slots) {
@@ -309,7 +317,7 @@ export function registerRuns(app, { repo }) {
         RUN_PROGRESS.update(runId, { matches_done: mIdx, slots_built: slots.length });
       }
 
-      RUN_PROGRESS.update(runId, { phase: 'persisting', current_match: null });
+      RUN_PROGRESS.update(runId, { phase: 'persisting', sub_phase: null, current_match: null });
       RUNS_STORE.set(runId, {
         run_id: runId,
         date_start,

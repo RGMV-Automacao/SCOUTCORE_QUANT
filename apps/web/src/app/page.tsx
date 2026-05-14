@@ -115,6 +115,16 @@ export default function ScoutCorePage() {
   const [dryRunLoading,   setDryRunLoading]   = useState(false);
   const settleTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Yankee submit (Bloco 3.4) — stake + dry-run + double-confirm 15s
+  const [yankeeStake,         setYankeeStake]         = useState(3);
+  const [yankeeDryRunResult,  setYankeeDryRunResult]  = useState<any>(null);
+  const [yankeeDryRunLoading, setYankeeDryRunLoading] = useState(false);
+  const [yankeeSubmitConfirm, setYankeeSubmitConfirm] = useState(false);
+  const [yankeeSubmitCountdown, setYankeeSubmitCountdown] = useState<number | null>(null);
+  const [yankeeSubmitLoading, setYankeeSubmitLoading] = useState(false);
+  const [yankeeSubmitResult,  setYankeeSubmitResult]  = useState<any>(null);
+  const yankeeSubmitTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Predictions table (Resolver)
   const [predsData,    setPredsData]    = useState<any>(null);
   const [predsLoading, setPredsLoading] = useState(false);
@@ -138,21 +148,29 @@ export default function ScoutCorePage() {
     if (settleTimer.current) clearInterval(settleTimer.current);
     if (elapsedTimer.current) clearInterval(elapsedTimer.current);
     if (progressTimer.current) clearInterval(progressTimer.current);
+    if (yankeeSubmitTimer.current) clearInterval(yankeeSubmitTimer.current);
   }, []);
 
   // ── Pipeline progress mapping ────────────────────────────────────────────────
-  // Backend reporta { phase, matches_done, total_matches, slots_built, current_match }.
-  // Mapeamos para a barra de 11 estágios sem inventar dados: o avanço é real,
-  // proporcional aos matches processados durante a fase 'predicting'.
+  // Backend reporta { phase, sub_phase, matches_done, total_matches, slots_built, current_match }.
+  // Mapeamos para a barra de 11 estágios SEM inventar dados:
+  //  • discover → 1
+  //  • predicting + sub_phase (lookups/engine_a/engine_b/curinga/evidence_gates/ev_rank) → 2..7
+  //  • persisting → 8
+  //  • done → 11
+  const SUB_PHASE_STAGE: Record<string, number> = {
+    lookups: 2,
+    engine_a: 3,
+    engine_b: 4,
+    curinga: 5,
+    evidence_gates: 6,
+    ev_rank: 7,
+  };
   const phaseToProgress = (p: any): number => {
     if (!p) return 0;
     switch (p.phase) {
       case 'discover':   return 1;
-      case 'predicting': {
-        const ratio = p.total_matches > 0 ? (p.matches_done ?? 0) / p.total_matches : 0;
-        // 'predicting' cobre os estágios 2..7 (6 etapas internas: norm, engine A/B, curinga, isotonic, gates)
-        return 1 + Math.min(6, Math.floor(ratio * 6 + 0.5));
-      }
+      case 'predicting': return SUB_PHASE_STAGE[p.sub_phase ?? ''] ?? 2;
       case 'persisting': return 8;
       case 'done':       return 11;
       case 'failed':     return 0;
@@ -180,9 +198,11 @@ export default function ScoutCorePage() {
   const handleRun = async () => {
     setError(null);
     setRunData(null); setYankeeData(null); setPicksData(null);
-    setSettleResult(null); setDryRunResult(null);
+    setSettleResult(null); setDryRunResult(null); setRepairResult(null);
     setSettleConfirm(false); setSettleCountdown(null);
     setPredsData(null); setExpandedDuplas(new Set());
+    setYankeeDryRunResult(null); setYankeeSubmitResult(null);
+    setYankeeSubmitConfirm(false); setYankeeSubmitCountdown(null);
     setProgress(null);
     setLoading(true);
     setPipelinePhase("running");
@@ -247,6 +267,74 @@ export default function ScoutCorePage() {
     }
   };
 
+  // ── Yankee submission (Bloco 3.4) ───────────────────────────────────────────
+  const handleYankeeDryRun = async () => {
+    if (!runData?.run_id) return;
+    setYankeeDryRunLoading(true);
+    setYankeeDryRunResult(null);
+    setError(null);
+    try {
+      const r = await fetch(`${API_BASE}/v1/runs/${runData.run_id}/yankee/dry-run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stake_per_ticket: yankeeStake }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
+      setYankeeDryRunResult(data);
+    } catch (e: any) {
+      setError(`Yankee dry-run: ${e.message ?? "erro desconhecido"}`);
+    } finally {
+      setYankeeDryRunLoading(false);
+    }
+  };
+
+  const startYankeeSubmitConfirm = () => {
+    setYankeeSubmitConfirm(true);
+    setYankeeSubmitCountdown(15);
+    if (yankeeSubmitTimer.current) clearInterval(yankeeSubmitTimer.current);
+    yankeeSubmitTimer.current = setInterval(() => {
+      setYankeeSubmitCountdown((prev) => {
+        if (prev == null || prev <= 1) {
+          clearInterval(yankeeSubmitTimer.current!);
+          setYankeeSubmitConfirm(false);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const cancelYankeeSubmit = () => {
+    if (yankeeSubmitTimer.current) clearInterval(yankeeSubmitTimer.current);
+    setYankeeSubmitConfirm(false);
+    setYankeeSubmitCountdown(null);
+  };
+
+  const handleYankeeSubmit = async () => {
+    if (!runData?.run_id) return;
+    if (yankeeSubmitTimer.current) clearInterval(yankeeSubmitTimer.current);
+    setYankeeSubmitConfirm(false);
+    setYankeeSubmitCountdown(null);
+    setYankeeSubmitLoading(true);
+    setYankeeSubmitResult(null);
+    setError(null);
+    try {
+      const r = await fetch(`${API_BASE}/v1/runs/${runData.run_id}/yankee/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stake_per_ticket: yankeeStake, confirm: true }),
+      });
+      const data = await r.json();
+      if (!r.ok && r.status !== 409) throw new Error(data.error ?? `HTTP ${r.status}`);
+      setYankeeSubmitResult(data);
+    } catch (e: any) {
+      setError(`Yankee submit: ${e.message ?? "erro desconhecido"}`);
+    } finally {
+      setYankeeSubmitLoading(false);
+    }
+  };
+
   // ── Resolver ─────────────────────────────────────────────────────────────────
   const startSettleConfirm = () => {
     setSettleConfirm(true);
@@ -297,6 +385,34 @@ export default function ScoutCorePage() {
       if (res.ok) setPredsData(await res.json());
     } catch { /* non-fatal */ }
     finally { setPredsLoading(false); }
+  };
+
+  // Reparar histórico (Bloco 5.1) — reseta + reliquida com regras atuais.
+  // Sem countdown: é botão "manutenção" assumido como deliberado. Confirma
+  // server-side via confirm:true para evitar curl acidental.
+  const [repairLoading, setRepairLoading] = useState(false);
+  const [repairResult,  setRepairResult]  = useState<any>(null);
+  const repairRun = async () => {
+    if (!runData?.run_id) return;
+    if (!window.confirm("Reparar histórico: resetar resultados e reliquidar com regras atuais?\n\nIsso vai sobrescrever liquidações anteriores deste run.")) return;
+    setRepairLoading(true);
+    setRepairResult(null);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/v1/settle/${runData.run_id}/repair`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setRepairResult(data);
+      loadPredictions(runData.run_id);
+    } catch (e: any) {
+      setError(`Reparar: ${e.message ?? "erro desconhecido"}`);
+    } finally {
+      setRepairLoading(false);
+    }
   };
 
   // ── Aprendizado ──────────────────────────────────────────────────────────────
@@ -731,6 +847,94 @@ export default function ScoutCorePage() {
                     <p className="text-xs text-gray-600">BIBD balanceado = cada confronto aparece exatamente 4× nos 10 bilhetes.</p>
                   </div>
                 )}
+
+                {/* Controles de submissão (Bloco 3.4) ─────────────────────── */}
+                <div className="bg-gray-800/40 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Submissão</h3>
+                    <span className="text-xs text-gray-600">Stake total: <span className="text-white font-mono font-semibold">R$ {(tickets.length * yankeeStake).toFixed(2)}</span></span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs text-gray-400 flex items-center gap-2">
+                      Stake por ticket (R$)
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        step={0.5}
+                        value={yankeeStake}
+                        onChange={(e) => setYankeeStake(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
+                        disabled={yankeeSubmitLoading || yankeeSubmitConfirm}
+                        className="w-20 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white font-mono disabled:opacity-50"
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={handleYankeeDryRun}
+                      disabled={yankeeDryRunLoading || yankeeSubmitLoading || yankeeSubmitConfirm}
+                      className="text-xs px-3 py-1.5 rounded bg-cyan-900/60 border border-cyan-700/60 text-cyan-200 hover:bg-cyan-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {yankeeDryRunLoading ? "Validando…" : "Dry-run"}
+                    </button>
+
+                    {!yankeeSubmitConfirm ? (
+                      <button
+                        type="button"
+                        onClick={startYankeeSubmitConfirm}
+                        disabled={yankeeSubmitLoading || tickets.length === 0}
+                        className="text-xs px-3 py-1.5 rounded bg-red-900/60 border border-red-700/60 text-red-200 hover:bg-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {yankeeSubmitLoading ? "Submetendo…" : "Submeter Yankee real"}
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleYankeeSubmit}
+                          className="text-xs px-3 py-1.5 rounded bg-red-700 border border-red-500 text-white font-semibold animate-pulse"
+                        >
+                          Confirmar ({yankeeSubmitCountdown}s)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelYankeeSubmit}
+                          className="text-xs px-2 py-1.5 rounded bg-gray-700/60 border border-gray-600/60 text-gray-300 hover:bg-gray-700"
+                        >
+                          Cancelar
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Resultado dry-run */}
+                  {yankeeDryRunResult && (
+                    <div className={`text-xs rounded-lg p-3 border ${yankeeDryRunResult.blocking?.length ? "bg-yellow-950/40 border-yellow-800/40 text-yellow-200" : "bg-cyan-950/40 border-cyan-800/40 text-cyan-200"}`}>
+                      <div className="font-semibold">Dry-run: {yankeeDryRunResult.tickets_count} tickets × R$ {yankeeDryRunResult.stake_per_ticket} = R$ {yankeeDryRunResult.stake_total}</div>
+                      {yankeeDryRunResult.blocking?.length > 0 && (
+                        <div className="mt-1">Bloqueios: {yankeeDryRunResult.blocking.join(", ")}</div>
+                      )}
+                      {yankeeDryRunResult.warnings?.length > 0 && (
+                        <div className="mt-1 text-gray-400">Avisos: {yankeeDryRunResult.warnings.slice(0, 3).join("; ")}</div>
+                      )}
+                      <div className="mt-1 text-gray-500 font-mono">ID: {yankeeDryRunResult.submission_id}</div>
+                    </div>
+                  )}
+
+                  {/* Resultado submit */}
+                  {yankeeSubmitResult && (
+                    <div className={`text-xs rounded-lg p-3 border ${yankeeSubmitResult.status === "submitted" ? "bg-green-950/40 border-green-800/40 text-green-200" : "bg-red-950/40 border-red-800/40 text-red-200"}`}>
+                      <div className="font-semibold">
+                        {yankeeSubmitResult.status === "submitted" ? "✓ Yankee submetido" : "✗ Submit rejeitado"} — {yankeeSubmitResult.tickets_count} tickets · R$ {yankeeSubmitResult.stake_total}
+                      </div>
+                      {yankeeSubmitResult.blocking?.length > 0 && (
+                        <div className="mt-1">Motivos: {yankeeSubmitResult.blocking.join(", ")}</div>
+                      )}
+                      <div className="mt-1 text-gray-500 font-mono">ID: {yankeeSubmitResult.submission_id}</div>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -904,11 +1108,29 @@ export default function ScoutCorePage() {
                   </div>
                 )}
 
+                {/* Repair result (Bloco 5.1) */}
+                {repairResult && (
+                  <div className="bg-cyan-950/30 border border-cyan-800/40 rounded-xl p-4 space-y-1">
+                    <div className="text-xs font-semibold text-cyan-300">Reparo concluído</div>
+                    <div className="text-xs text-gray-300">
+                      {repairResult.reset_predictions ?? 0} predições resetadas · {repairResult.settled ?? 0} reliquidadas
+                      {typeof repairResult.skipped === "number" ? ` · ${repairResult.skipped} skipped` : ""}
+                      {typeof repairResult.no_data  === "number" ? ` · ${repairResult.no_data} sem dado` : ""}
+                    </div>
+                  </div>
+                )}
+
                 {/* Botões */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <button onClick={() => settleRun(true)} disabled={dryRunLoading}
                     className="bg-blue-800 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2.5 rounded-xl transition-colors text-sm">
-                    {dryRunLoading ? "Simulando…" : "Dry-run (simular)"}
+                    {dryRunLoading ? "Simulando…" : "Dry-run"}
+                  </button>
+
+                  <button onClick={repairRun} disabled={repairLoading}
+                    className="bg-cyan-800 hover:bg-cyan-700 disabled:opacity-50 text-white font-medium py-2.5 rounded-xl transition-colors text-sm"
+                    title="Reseta result/settled_at e reliquida com as regras atuais.">
+                    {repairLoading ? "Reparando…" : "Reparar histórico"}
                   </button>
 
                   {!settleConfirm ? (
