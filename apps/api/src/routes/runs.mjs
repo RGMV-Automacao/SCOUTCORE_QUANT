@@ -1,6 +1,66 @@
 import { randomUUID } from 'node:crypto';
 import { runPredict } from '../predict.mjs';
 
+// ── RunProgressStore ──────────────────────────────────────────────────────────
+// In-memory progress tracking for /v1/run. Cliente pode fornecer `run_id`
+// no body do POST e fazer polling em `GET /v1/runs/:id/progress` em paralelo,
+// observando avanço por match enquanto o POST está em flight.
+const PROGRESS_TTL_MS = 30 * 60 * 1000;     // 30 min retention após finish
+const PROGRESS_GC_INTERVAL = 5 * 60 * 1000; // GC a cada 5 min
+
+class RunProgressStore {
+  constructor() {
+    /** @type {Map<string, any>} */
+    this.map = new Map();
+    this._gc = setInterval(() => this._gcSweep(), PROGRESS_GC_INTERVAL);
+    this._gc.unref?.();
+  }
+  init(runId, { date_start, date_end, total_matches }) {
+    const now = Date.now();
+    this.map.set(runId, {
+      run_id: runId,
+      status: 'running',
+      phase: 'discover',
+      date_start, date_end,
+      total_matches,
+      matches_done: 0,
+      matches_skipped: 0,
+      slots_built: 0,
+      current_match: null,
+      started_at: now,
+      updated_at: now,
+      finished_at: null,
+      error: null,
+    });
+  }
+  update(runId, patch) {
+    const r = this.map.get(runId);
+    if (!r) return;
+    Object.assign(r, patch, { updated_at: Date.now() });
+  }
+  finish(runId, { slots_built, error } = {}) {
+    const r = this.map.get(runId);
+    if (!r) return;
+    r.status = error ? 'failed' : 'done';
+    r.phase = error ? 'failed' : 'done';
+    r.current_match = null;
+    r.finished_at = Date.now();
+    r.updated_at = r.finished_at;
+    if (typeof slots_built === 'number') r.slots_built = slots_built;
+    if (error) r.error = error;
+  }
+  get(runId) { return this.map.get(runId) ?? null; }
+  _gcSweep() {
+    const cutoff = Date.now() - PROGRESS_TTL_MS;
+    for (const [k, v] of this.map) {
+      const stamp = v.finished_at ?? v.started_at;
+      if (v.status !== 'running' && stamp < cutoff) this.map.delete(k);
+    }
+  }
+}
+const RUN_PROGRESS = new RunProgressStore();
+export function getRunProgress() { return RUN_PROGRESS; }
+
 // Persistent runs store backed by SQLite (tables: runs, run_slots).
 // Mantém a interface antiga (set/get/has/delete/clear/size/values) que
 // strategies.mjs consome via RUNS_CACHE.
@@ -185,57 +245,84 @@ export function registerRuns(app, { repo }) {
   RUNS_STORE = new RunsStore(repo.db);
 
   app.post('/v1/run', async (req, reply) => {
-    const { date_start, date_end } = req.body ?? {};
+    const { date_start, date_end, run_id: clientRunId } = req.body ?? {};
     if (!date_start) return reply.code(400).send({ error: 'date_start_required' });
     const end = date_end || date_start;
 
-    const runId = `run-${date_start}-to-${end}-${randomUUID().slice(0, 8)}`;
+    // Cliente pode pré-gerar run_id (ex: crypto.randomUUID()) para iniciar
+    // polling em paralelo. Sanitiza para evitar injeção em chaves de storage.
+    const safeClientId = typeof clientRunId === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(clientRunId)
+      ? clientRunId
+      : null;
+    const runId = safeClientId
+      ? `run-${date_start}-to-${end}-${safeClientId.slice(0, 16)}`
+      : `run-${date_start}-to-${end}-${randomUUID().slice(0, 8)}`;
+
     const matches = repo.getMatchesByDateRange(date_start, end);
+    RUN_PROGRESS.init(runId, { date_start, date_end: end, total_matches: matches.length });
+    RUN_PROGRESS.update(runId, { phase: matches.length === 0 ? 'done' : 'predicting' });
+
     const slots = [];
+    let mIdx = 0;
+    try {
+      for (const m of matches) {
+        mIdx++;
+        RUN_PROGRESS.update(runId, {
+          phase: 'predicting',
+          current_match: { idx: mIdx, home: m.home_team, away: m.away_team, liga: m.liga },
+        });
 
-    for (const m of matches) {
-      let odds_snapshot;
-      try {
-        odds_snapshot = buildOddsSnapshot(repo.db, m.home_team, m.away_team, m.data_partida, app.log);
-      } catch (err) {
-        app.log.warn?.({ err: err.message, match: m.id_confronto }, 'odds_snapshot_failed_skip_match');
-        continue;
-      }
-
-      const payload = {
-        match: {
-          external_id: m.id_confronto,
-          home: m.home_team,
-          away: m.away_team,
-          liga: m.liga,
-          date: m.data_partida,
-        },
-        odds_snapshot,
-        options: { include_engines: ['A'] },
-      };
-
-      const out = await runPredict({ repo, body: payload, log: app.log, run_id: runId });
-
-      if (!out.__error && out.slots) {
-        for (const s of out.slots) {
-          s.match_id = m.id_confronto;
-          s.home = m.home_team;
-          s.away = m.away_team;
-          s.liga = m.liga;
-          s.date = m.data_partida;
-          slots.push(s);
+        let odds_snapshot;
+        try {
+          odds_snapshot = buildOddsSnapshot(repo.db, m.home_team, m.away_team, m.data_partida, app.log);
+        } catch (err) {
+          app.log.warn?.({ err: err.message, match: m.id_confronto }, 'odds_snapshot_failed_skip_match');
+          RUN_PROGRESS.update(runId, { matches_skipped: (RUN_PROGRESS.get(runId)?.matches_skipped ?? 0) + 1 });
+          continue;
         }
-      }
-    }
 
-    RUNS_STORE.set(runId, {
-      run_id: runId,
-      date_start,
-      date_end: end,
-      matches: matches.length,
-      slots,
-      created_at: new Date().toISOString(),
-    });
+        const payload = {
+          match: {
+            external_id: m.id_confronto,
+            home: m.home_team,
+            away: m.away_team,
+            liga: m.liga,
+            date: m.data_partida,
+          },
+          odds_snapshot,
+          options: { include_engines: ['A'] },
+        };
+
+        const out = await runPredict({ repo, body: payload, log: app.log, run_id: runId });
+
+        if (!out.__error && out.slots) {
+          for (const s of out.slots) {
+            s.match_id = m.id_confronto;
+            s.home = m.home_team;
+            s.away = m.away_team;
+            s.liga = m.liga;
+            s.date = m.data_partida;
+            slots.push(s);
+          }
+        }
+
+        RUN_PROGRESS.update(runId, { matches_done: mIdx, slots_built: slots.length });
+      }
+
+      RUN_PROGRESS.update(runId, { phase: 'persisting', current_match: null });
+      RUNS_STORE.set(runId, {
+        run_id: runId,
+        date_start,
+        date_end: end,
+        matches: matches.length,
+        slots,
+        created_at: new Date().toISOString(),
+      });
+      RUN_PROGRESS.finish(runId, { slots_built: slots.length });
+    } catch (err) {
+      RUN_PROGRESS.finish(runId, { error: err.message ?? String(err) });
+      throw err;
+    }
 
     return {
       run_id: runId,
@@ -244,6 +331,14 @@ export function registerRuns(app, { repo }) {
       matches: matches.length,
       slots: slots.length,
     };
+  });
+
+  app.get('/v1/runs/:id/progress', async (req, reply) => {
+    const { id } = req.params;
+    const p = RUN_PROGRESS.get(id);
+    if (!p) return reply.code(404).send({ error: 'not_found', run_id: id });
+    const elapsed_ms = (p.finished_at ?? Date.now()) - p.started_at;
+    return { ...p, elapsed_ms };
   });
 
   app.get('/v1/runs', async () => {

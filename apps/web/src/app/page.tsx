@@ -23,7 +23,6 @@ const PIPELINE_STAGES = [
   { id: 10, label: "Family Filter — Agressivas",       icon: Activity },
   { id: 11, label: "SCOUT IA",                         icon: Eye, optIn: true },
 ];
-const STAGE_DELAYS = [300, 400, 700, 900, 500, 500, 350, 600, 650, 550, 250];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmtElapsed = (ms: number) => {
@@ -97,8 +96,9 @@ export default function ScoutCorePage() {
   const [pipelinePhase,    setPipelinePhase]     = useState<"idle"|"running"|"done"|"error">("idle");
   const [pipelineProgress, setPipelineProgress]  = useState(0);
   const [elapsed,          setElapsed]           = useState(0);
-  const cancelAnim    = useRef(false);
+  const [progress,         setProgress]          = useState<any>(null); // dados reais de /v1/runs/:id/progress
   const elapsedTimer  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef  = useRef<number | null>(null);
 
   // Run data
@@ -137,20 +137,43 @@ export default function ScoutCorePage() {
   useEffect(() => () => {
     if (settleTimer.current) clearInterval(settleTimer.current);
     if (elapsedTimer.current) clearInterval(elapsedTimer.current);
+    if (progressTimer.current) clearInterval(progressTimer.current);
   }, []);
 
-  // ── Pipeline animation ──────────────────────────────────────────────────────
-  const startPipelineAnim = useCallback(() => {
-    cancelAnim.current = false;
-    setPipelineProgress(0);
-    let stage = 0;
-    const tick = () => {
-      if (cancelAnim.current) return;
-      stage++;
-      setPipelineProgress(stage);
-      if (stage < 11) setTimeout(tick, STAGE_DELAYS[stage] ?? 400);
-    };
-    setTimeout(tick, STAGE_DELAYS[0]);
+  // ── Pipeline progress mapping ────────────────────────────────────────────────
+  // Backend reporta { phase, matches_done, total_matches, slots_built, current_match }.
+  // Mapeamos para a barra de 11 estágios sem inventar dados: o avanço é real,
+  // proporcional aos matches processados durante a fase 'predicting'.
+  const phaseToProgress = (p: any): number => {
+    if (!p) return 0;
+    switch (p.phase) {
+      case 'discover':   return 1;
+      case 'predicting': {
+        const ratio = p.total_matches > 0 ? (p.matches_done ?? 0) / p.total_matches : 0;
+        // 'predicting' cobre os estágios 2..7 (6 etapas internas: norm, engine A/B, curinga, isotonic, gates)
+        return 1 + Math.min(6, Math.floor(ratio * 6 + 0.5));
+      }
+      case 'persisting': return 8;
+      case 'done':       return 11;
+      case 'failed':     return 0;
+      default:           return 0;
+    }
+  };
+
+  const pollProgress = useCallback((runId: string) => {
+    if (progressTimer.current) clearInterval(progressTimer.current);
+    progressTimer.current = setInterval(async () => {
+      try {
+        const r = await fetch(`${API_BASE}/v1/runs/${runId}/progress`);
+        if (!r.ok) return;
+        const p = await r.json();
+        setProgress(p);
+        setPipelineProgress(phaseToProgress(p));
+        if (p.status === 'done' || p.status === 'failed') {
+          if (progressTimer.current) clearInterval(progressTimer.current);
+        }
+      } catch { /* ignore transient errors */ }
+    }, 500);
   }, []);
 
   // ── Main run ────────────────────────────────────────────────────────────────
@@ -160,25 +183,35 @@ export default function ScoutCorePage() {
     setSettleResult(null); setDryRunResult(null);
     setSettleConfirm(false); setSettleCountdown(null);
     setPredsData(null); setExpandedDuplas(new Set());
+    setProgress(null);
     setLoading(true);
     setPipelinePhase("running");
     setPipelineProgress(0);
     setElapsed(0);
     setActiveTab("pipeline");
 
-    // Start animation + elapsed timer
-    startPipelineAnim();
+    // Pré-gerar suffix do run_id para o cliente conhecer antes do POST responder
+    // (permite polling em paralelo de /v1/runs/:id/progress).
+    const clientRunSuffix = (typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2)).replace(/-/g, "").slice(0, 12);
+    const expectedRunId = `run-${startDate}-to-${endDate}-${clientRunSuffix.slice(0, 16)}`;
+
+    // Elapsed timer + polling de progresso real (substitui animação fake)
     startTimeRef.current = Date.now();
     if (elapsedTimer.current) clearInterval(elapsedTimer.current);
     elapsedTimer.current = setInterval(() => {
       setElapsed(Date.now() - (startTimeRef.current ?? Date.now()));
     }, 500);
 
+    // Inicia polling após pequeno delay para garantir que o backend já registrou progress
+    setTimeout(() => pollProgress(expectedRunId), 250);
+
     try {
       const runRes = await fetch(`${API_BASE}/v1/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date_start: startDate, date_end: endDate }),
+        body: JSON.stringify({ date_start: startDate, date_end: endDate, run_id: clientRunSuffix }),
       });
       if (!runRes.ok) {
         const e = await runRes.json().catch(() => ({}));
@@ -187,7 +220,7 @@ export default function ScoutCorePage() {
       const run = await runRes.json();
       setRunData(run);
 
-      cancelAnim.current = true;
+      if (progressTimer.current) clearInterval(progressTimer.current);
       if (elapsedTimer.current) clearInterval(elapsedTimer.current);
       setPipelineProgress(11);
       setPipelinePhase("done");
@@ -205,7 +238,7 @@ export default function ScoutCorePage() {
 
       setActiveTab("confrontos");
     } catch (e: any) {
-      cancelAnim.current = true;
+      if (progressTimer.current) clearInterval(progressTimer.current);
       if (elapsedTimer.current) clearInterval(elapsedTimer.current);
       setPipelinePhase("error");
       setError(e.message ?? "Erro desconhecido ao executar o pipeline");
@@ -518,6 +551,16 @@ export default function ScoutCorePage() {
                                                 "Aguardando execução"}
                 </div>
                 {runData && <div className="text-xs text-gray-500 font-mono truncate mt-0.5">{runData.run_id}</div>}
+                {progress && pipelinePhase === "running" && (
+                  <div className="text-xs text-gray-400 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                    <span>partidas: <strong className="text-white">{progress.matches_done ?? 0}/{progress.total_matches ?? "?"}</strong></span>
+                    {progress.matches_skipped > 0 && <span className="text-yellow-400">skip: {progress.matches_skipped}</span>}
+                    <span>slots: <strong className="text-green-400">{progress.slots_built ?? 0}</strong></span>
+                    {progress.current_match && (
+                      <span className="truncate max-w-[28ch]">→ {progress.current_match.home} × {progress.current_match.away}</span>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="text-right shrink-0">
                 <div className="text-sm font-mono text-gray-300">{fmtElapsed(elapsed)}</div>
