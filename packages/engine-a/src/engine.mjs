@@ -18,6 +18,7 @@
 //   - 2T derivado FT-HT (precisa skel separado, não confiável só por subtração).
 //   - Gols HT por equipe usa scaling global conservador; confidence/QG deve tratar como mais fraco.
 
+import { safeParse, EngineAContextZ } from '@scoutcore/contracts';
 import { listMarkets, MARKETS_VERSION } from '@scoutcore/markets';
 import { scoreMatrix, poissonPMF } from './poisson.mjs';
 
@@ -38,6 +39,18 @@ const HT_SHARE = {
 
 // Famílias com baixa aderência ao Poisson.
 const LOW_CONFIDENCE_FAMILIES = new Set(['cartoes', 'faltas']);
+
+function validatePredictContext(ctx) {
+  const parsed = safeParse(EngineAContextZ, ctx);
+  if (!parsed.ok) {
+    const summary = parsed.errors
+      .slice(0, 3)
+      .map((issue) => `${issue.path.join('.') || 'root'}:${issue.message}`)
+      .join('|');
+    throw new Error(`engine_a_invalid_context:${summary}`);
+  }
+  return parsed.value;
+}
 
 /**
  * Calcula λ casa/fora a partir de team profiles + league prior (gols).
@@ -252,13 +265,15 @@ function predictCountFamily({ family, profileKey, leagueTotalKey, profileHome, p
  *   coerência sim/nao e home/draw/away.
  */
 export function predict(ctx) {
-  const { lambdaHome, lambdaAway, inputs } = computeLambdas(ctx);
+  const validatedCtx = validatePredictContext(ctx);
+  const { profileHome, profileAway, priors, calibration = {} } = validatedCtx;
+  const { lambdaHome, lambdaAway, inputs } = computeLambdas(validatedCtx);
   const matrixFT = scoreMatrix(lambdaHome, lambdaAway, { maxGoals: MAX_GOALS, rho: RHO_DC });
   const matrixHT = scoreMatrix(lambdaHome * HT_SCALE_GOLS, lambdaAway * HT_SCALE_GOLS, { maxGoals: MAX_GOALS, rho: RHO_DC });
   // Matriz 2T (segundo tempo) = matriz com lambdas reduzidos por 1-share
   const matrix2T = scoreMatrix(lambdaHome * (1 - HT_SCALE_GOLS), lambdaAway * (1 - HT_SCALE_GOLS), { maxGoals: MAX_GOALS, rho: RHO_DC });
 
-  const calib = ctx.calibration ?? {};
+  const calib = calibration;
   const lm = (family) => Number(calib[family]?.lambda_mult ?? 1.0);
 
   const slots = [];
@@ -327,20 +342,9 @@ export function predict(ctx) {
     family: 'escanteios',
     profileKey: 'avg_escanteios',
     leagueTotalKey: 'avg_escanteios_total',
-    profileHome: ctx.profileHome,
-    profileAway: ctx.profileAway,
-    priors: ctx.priors,
-    lambdaMult: lm('escanteios'),
-  }));
-
-  // ESCANTEIOS asiatico total FT (.25/.75), mesma lambda total dos escanteios.
-  slots.push(...predictCountFamily({
-    family: 'escanteios_asian',
-    profileKey: 'avg_escanteios',
-    leagueTotalKey: 'avg_escanteios_total',
-    profileHome: ctx.profileHome,
-    profileAway: ctx.profileAway,
-    priors: ctx.priors,
+    profileHome,
+    profileAway,
+    priors,
     lambdaMult: lm('escanteios'),
   }));
 
@@ -349,9 +353,9 @@ export function predict(ctx) {
     family: 'chutes',
     profileKey: 'avg_chutes',
     leagueTotalKey: 'avg_chutes_total',
-    profileHome: ctx.profileHome,
-    profileAway: ctx.profileAway,
-    priors: ctx.priors,
+    profileHome,
+    profileAway,
+    priors,
     lambdaMult: lm('chutes'),
   }));
 
@@ -361,9 +365,9 @@ export function predict(ctx) {
     family: 'cartoes',
     profileKey: 'avg_cartoes_amarelos',
     leagueTotalKey: 'avg_cartoes_total',
-    profileHome: ctx.profileHome,
-    profileAway: ctx.profileAway,
-    priors: ctx.priors,
+    profileHome,
+    profileAway,
+    priors,
     lambdaMult: lm('cartoes'),
   }));
 
@@ -372,9 +376,9 @@ export function predict(ctx) {
     family: 'faltas',
     profileKey: 'avg_faltas_cometidas',
     leagueTotalKey: 'avg_faltas_total',
-    profileHome: ctx.profileHome,
-    profileAway: ctx.profileAway,
-    priors: ctx.priors,
+    profileHome,
+    profileAway,
+    priors,
     lambdaMult: lm('faltas'),
   }));
 
@@ -382,27 +386,26 @@ export function predict(ctx) {
   // Derivações Poisson bivariado (gratuitas — usam matrixFT/HT/2T já calculados)
   // ─────────────────────────────────────────────
   slots.push(...derive2T(matrix2T, provBaseGoals));
-  slots.push(...deriveAsianTotal(matrixFT, matrixHT, provBaseGoals));
   slots.push(...deriveBTTSExtras(matrixFT, matrixHT, matrix2T, provBaseGoals));
   slots.push(...derive1X2_2T(matrix2T, provBaseGoals));
   slots.push(...deriveDuplaChance(matrixFT, matrixHT, matrix2T, provBaseGoals));
-  slots.push(...deriveDNB(matrixFT, matrixHT, matrix2T, provBaseGoals));
   slots.push(...deriveHTFT(matrixHT, matrix2T, provBaseGoals));
+  slots.push(...deriveAsianHandicap(matrixFT, provBaseGoals));
+  slots.push(...deriveDNB(matrixFT, matrixHT, matrix2T, provBaseGoals));
   slots.push(...deriveCorrectScore(matrixFT, matrixHT, provBaseGoals));
   slots.push(...deriveMargem(matrixFT, provBaseGoals));
   slots.push(...deriveMarcaPrimeiroUltimo(lambdaHome, lambdaAway, provBaseGoals));
   slots.push(...deriveMarca(matrixFT, provBaseGoals));
   slots.push(...deriveHandicap(matrixFT, provBaseGoals));
-  slots.push(...deriveAsianHandicap(matrixFT, provBaseGoals));
 
   // Famílias contagem auxiliares (Poisson independente por equipe)
   slots.push(...deriveCountAuxiliary({
     family: 'escanteios', profileKey: 'avg_escanteios', leagueTotalKey: 'avg_escanteios_total',
-    profileHome: ctx.profileHome, profileAway: ctx.profileAway, priors: ctx.priors, lambdaMult: lm('escanteios'),
+    profileHome, profileAway, priors, lambdaMult: lm('escanteios'),
   }));
   slots.push(...deriveCountAuxiliary({
     family: 'cartoes', profileKey: 'avg_cartoes_amarelos', leagueTotalKey: 'avg_cartoes_total',
-    profileHome: ctx.profileHome, profileAway: ctx.profileAway, priors: ctx.priors, lambdaMult: lm('cartoes'),
+    profileHome, profileAway, priors, lambdaMult: lm('cartoes'),
     lowConfidence: true,
   }));
 
@@ -411,27 +414,27 @@ export function predict(ctx) {
     family: 'chutes_alvo',
     profileKey: 'avg_chutes_alvo',
     leagueTotalKey: 'avg_chutes_alvo_total',
-    profileHome: ctx.profileHome,
-    profileAway: ctx.profileAway,
-    priors: ctx.priors,
+    profileHome,
+    profileAway,
+    priors,
     lambdaMult: lm('chutes_alvo'),
   }));
   slots.push(...predictCountFamily({
     family: 'impedimentos',
     profileKey: 'avg_impedimentos',
     leagueTotalKey: 'avg_impedimentos_total',
-    profileHome: ctx.profileHome,
-    profileAway: ctx.profileAway,
-    priors: ctx.priors,
+    profileHome,
+    profileAway,
+    priors,
     lambdaMult: lm('impedimentos'),
   }));
   slots.push(...predictCountFamily({
     family: 'defesas',
     profileKey: 'avg_defesas',
     leagueTotalKey: 'avg_defesas_total',
-    profileHome: ctx.profileHome,
-    profileAway: ctx.profileAway,
-    priors: ctx.priors,
+    profileHome,
+    profileAway,
+    priors,
     lambdaMult: lm('defesas'),
   }));
 
@@ -460,31 +463,12 @@ function derive2T(matrix2T, provBase) {
   return out;
 }
 
-function deriveAsianTotal(matrixFT, matrixHT, provBase) {
-  // Asiáticos com .25 e .75 (quarter-line). Probabilidade reportada é a prob
-  // de "win" pura (não considera push-half-back). Settle aplica payout fracionado.
-  const out = [];
-  for (const m of listMarkets({ family: 'asian_total' })) {
-    const matrix = m.period === 'HT' ? matrixHT : matrixFT;
-    const line = m.line;
-    const pOver = probTotalOver(matrix, line);
-    const p = m.direction === 'over' ? pOver : (1 - pOver);
-    out.push(mkSlot(m, p, true, { ...provBase, family: 'asian_total', asian: true }));
-  }
-  return out;
-}
-
 function deriveBTTSExtras(matrixFT, matrixHT, matrix2T, provBase) {
   const out = [];
   const pHT = probBTTS(matrixHT);
   const p2T = probBTTS(matrix2T);
-  const pAmbos = pHT * p2T;
   // P(algum tempo) = 1 - P(nenhum tempo) onde P(nenhum tempo) = (1-pHT)*(1-p2T)
   const pAlgum = 1 - (1 - pHT) * (1 - p2T);
-  for (const m of listMarkets({ family: 'btts_ambos_tempos' })) {
-    const p = m.direction === 'sim' ? pAmbos : (1 - pAmbos);
-    out.push(mkSlot(m, p, true, { ...provBase, family: 'btts_ambos_tempos' }));
-  }
   for (const m of listMarkets({ family: 'btts_algum_tempo' })) {
     const p = m.direction === 'sim' ? pAlgum : (1 - pAlgum);
     out.push(mkSlot(m, p, true, { ...provBase, family: 'btts_algum_tempo' }));
@@ -776,28 +760,6 @@ function deriveCountAuxiliary({ family, profileKey, leagueTotalKey, profileHome,
       const target = m.direction === 'home' ? pH : m.direction === 'away' ? pA : pNone;
       out.push(mkSlot(m, target, true, provBase));
     }
-
-    // Exato (total escanteios FT)
-    const dT = [];
-    for (let n = 0; n <= MAX_COUNT * 2; n++) {
-      let s = 0;
-      for (let i = 0; i <= n && i < dH.length; i++) {
-        const j = n - i;
-        if (j >= 0 && j < dA.length) s += dH[i] * dA[j];
-      }
-      dT.push(s);
-    }
-    for (const m of listMarkets({ family: 'escanteios_exato', period: 'FT' })) {
-      let p;
-      if (m.direction === 'eq_15_plus') {
-        p = 0;
-        for (let n = 15; n < dT.length; n++) p += dT[n];
-      } else {
-        const n = m.line;
-        p = dT[n] ?? 0;
-      }
-      out.push(mkSlot(m, p, true, provBase));
-    }
   }
 
   return out;
@@ -806,29 +768,67 @@ function deriveCountAuxiliary({ family, profileKey, leagueTotalKey, profileHome,
 /** Famílias cobertas pela versão atual do Engine A. */
 export function coveredFamilies() {
   return [
-    { family: 'gols',        scope: 'total', period: 'FT' },
-    { family: 'gols',        scope: 'home',  period: 'FT' },
-    { family: 'gols',        scope: 'away',  period: 'FT' },
-    { family: 'gols',        scope: 'total', period: 'HT' },
-    { family: 'gols',        scope: 'home',  period: 'HT' },
-    { family: 'gols',        scope: 'away',  period: 'HT' },
-    { family: 'btts',        scope: 'total', period: 'FT' },
-    { family: 'btts',        scope: 'total', period: 'HT' },
-    { family: '1x2',         scope: 'total', period: 'FT' },
-    { family: '1x2',         scope: 'total', period: 'HT' },
-    { family: 'escanteios',  scope: 'total', period: 'FT' },
-    { family: 'escanteios',  scope: 'home',  period: 'FT' },
-    { family: 'escanteios',  scope: 'away',  period: 'FT' },
-    { family: 'escanteios',  scope: 'total', period: 'HT' },
-    { family: 'escanteios',  scope: 'home',  period: 'HT' },
-    { family: 'escanteios',  scope: 'away',  period: 'HT' },
-    { family: 'escanteios_asian', scope: 'total', period: 'FT' },
-    { family: 'chutes',      scope: 'total', period: 'FT' },
-    { family: 'chutes',      scope: 'home',  period: 'FT' },
-    { family: 'chutes',      scope: 'away',  period: 'FT' },
-    { family: 'cartoes',     scope: 'total', period: 'FT', low_confidence: true },
-    { family: 'cartoes',     scope: 'home',  period: 'FT', low_confidence: true },
-    { family: 'cartoes',     scope: 'away',  period: 'FT', low_confidence: true },
-    { family: 'faltas',      scope: 'total', period: 'FT', low_confidence: true },
+    // Gols — matrix conjunta Dixon-Coles
+    { family: 'gols',              scope: 'total', period: 'FT' },
+    { family: 'gols',              scope: 'home',  period: 'FT' },
+    { family: 'gols',              scope: 'away',  period: 'FT' },
+    { family: 'gols',              scope: 'total', period: 'HT' },
+    { family: 'gols',              scope: 'home',  period: 'HT' },
+    { family: 'gols',              scope: 'away',  period: 'HT' },
+    { family: 'gols',              scope: 'total', period: '2T' },
+    // 1x2 — matrix FT/HT/2T
+    { family: '1x2',               scope: 'total', period: 'FT' },
+    { family: '1x2',               scope: 'total', period: 'HT' },
+    { family: '1x2',               scope: 'total', period: '2T' },
+    // Asian Handicap — matrix FT
+    { family: 'asian_handicap',    scope: 'total', period: 'FT' },
+    // BTTS — matrix FT/HT
+    { family: 'btts',              scope: 'total', period: 'FT' },
+    { family: 'btts',              scope: 'total', period: 'HT' },
+    { family: 'btts_algum_tempo',  scope: 'total', period: 'FULL' },
+    // Cartões — Poisson independente (low confidence)
+    { family: 'cartoes',           scope: 'total', period: 'FT', low_confidence: true },
+    { family: 'cartoes',           scope: 'home',  period: 'FT', low_confidence: true },
+    { family: 'cartoes',           scope: 'away',  period: 'FT', low_confidence: true },
+    { family: 'cartoes_1x2',      scope: 'total', period: 'FT', low_confidence: true },
+    // Chutes — Poisson independente
+    { family: 'chutes',            scope: 'total', period: 'FT' },
+    { family: 'chutes',            scope: 'home',  period: 'FT' },
+    { family: 'chutes',            scope: 'away',  period: 'FT' },
+    { family: 'chutes_alvo',       scope: 'total', period: 'FT' },
+    // Correct Score — matrix FT/HT
+    { family: 'correct_score',     scope: 'total', period: 'FT' },
+    { family: 'correct_score',     scope: 'total', period: 'HT' },
+    // Defesas — Poisson independente
+    { family: 'defesas',           scope: 'total', period: 'FT' },
+    // DNB — matrix FT/HT/2T
+    { family: 'dnb',               scope: 'total', period: 'FT' },
+    // Dupla Chance — matrix FT/HT/2T
+    { family: 'dupla',             scope: 'total', period: 'FT' },
+    { family: 'dupla',             scope: 'total', period: 'HT' },
+    { family: 'dupla',             scope: 'total', period: '2T' },
+    // Escanteios — Poisson independente
+    { family: 'escanteios',        scope: 'total', period: 'FT' },
+    { family: 'escanteios',        scope: 'home',  period: 'FT' },
+    { family: 'escanteios',        scope: 'away',  period: 'FT' },
+    { family: 'escanteios',        scope: 'total', period: 'HT' },
+    { family: 'escanteios',        scope: 'home',  period: 'HT' },
+    { family: 'escanteios',        scope: 'away',  period: 'HT' },
+    { family: 'escanteios_1x2',   scope: 'total', period: 'FT' },
+    { family: 'escanteios_race',  scope: 'total', period: 'FT' },
+    // Faltas — Poisson independente (low confidence)
+    { family: 'faltas',            scope: 'total', period: 'FT', low_confidence: true },
+    // Handicap Europeu — matrix FT
+    { family: 'handicap',          scope: 'total', period: 'FT' },
+    // HTFT — matrix HT×2T
+    { family: 'htft',              scope: 'total', period: 'FULL' },
+    // Impedimentos — Poisson independente
+    { family: 'impedimentos',      scope: 'total', period: 'FT' },
+    // Marca / Marca Primeiro / Marca Último — taxa relativa λ
+    { family: 'marca',             scope: 'total', period: 'FT' },
+    { family: 'marca_primeiro',    scope: 'total', period: 'FT' },
+    { family: 'marca_ultimo',      scope: 'total', period: 'FT' },
+    // Margem — matrix FT
+    { family: 'margem',            scope: 'total', period: 'FT' },
   ];
 }

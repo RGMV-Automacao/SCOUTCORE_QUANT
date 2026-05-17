@@ -99,8 +99,13 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    color-scheme: dark;
+    scrollbar-gutter: stable;
+  }
   body {
     @apply bg-background text-foreground;
+    overflow-y: scroll;
   }
 
   select,
@@ -110,6 +115,29 @@
   input[type="week"],
   input[type="month"] {
     color-scheme: dark;
+    accent-color: hsl(152 60% 48%);
+    background-color: hsl(220 18% 10%);
+    border-color: hsl(152 60% 48% / 0.28);
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+  input[type="week"]::-webkit-calendar-picker-indicator,
+  input[type="month"]::-webkit-calendar-picker-indicator {
+    border-radius: 6px;
+    cursor: pointer;
+    filter: invert(72%) sepia(38%) saturate(664%) hue-rotate(108deg) brightness(95%) contrast(88%);
+    opacity: 0.9;
+    padding: 2px;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator:hover,
+  input[type="time"]::-webkit-calendar-picker-indicator:hover,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover,
+  input[type="week"]::-webkit-calendar-picker-indicator:hover,
+  input[type="month"]::-webkit-calendar-picker-indicator:hover {
+    background-color: hsl(152 60% 48% / 0.16);
   }
 
   select option {

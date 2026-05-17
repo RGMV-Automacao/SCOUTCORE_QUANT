@@ -32,8 +32,10 @@ const FAMILY_FIELD = {
   cartoes:      'cartoes_amarelos',
   chutes:       'chutes',           // total shots
   finalizacoes: 'chutes',
+  chutes_alvo:  'chutes_no_alvo',
   faltas:       'faltas',
   impedimentos: 'impedimentos',
+  defesas:      'defesas',          // vindo de `times`, não de eventos_faixa
 };
 
 // ── Match identity helpers ───────────────────────────────────────────────────
@@ -46,13 +48,26 @@ function extractIdConfronto(match_id) {
 
 // ── loadMatchStats ───────────────────────────────────────────────────────────
 // Retorna { partida, byTime: Map<time, { FT, HT, '2T' }> } com agregados.
+//
+// IMPORTANTE — guarda anti-phantom-settle:
+// `processado = 1` é o flag canônico do legado (set por `extractor.js` apenas
+// após batch completo de `eventos_faixa`). Filtrar só por `home_goals IS NOT NULL`
+// não é suficiente porque jogos em status='Playing' já têm placar parcial mas
+// não terminaram — e jogos em 'Fixture' podem ter tido placar transitório
+// preenchido por engano em algum momento. Mesmo padrão usado em:
+//   - SqliteMatchRepository.mjs (getMatchesForTeam)
+//   - apps/jobs/src/rebuild-team-profiles.mjs
+//   - apps/jobs/src/rebuild-league-priors.mjs
+//   - scripts/rebuild-all-leagues.mjs
 function loadMatchStats(db, match_id) {
   const id_confronto = extractIdConfronto(match_id);
   const partida = db.prepare(`
     SELECT home_team, away_team, home_goals, away_goals, home_goals_ht, away_goals_ht,
            liga, temporada, id_confronto
     FROM partidas
-    WHERE id_confronto = ? AND home_goals IS NOT NULL
+    WHERE id_confronto = ?
+      AND processado = 1
+      AND home_goals IS NOT NULL
     LIMIT 1
   `).get(id_confronto);
   if (!partida) return null;
@@ -65,7 +80,8 @@ function loadMatchStats(db, match_id) {
   `).all(id_confronto);
 
   const empty = () => ({ escanteios:0, chutes:0, chutes_no_alvo:0, faltas:0,
-                         cartoes_amarelos:0, cartoes_vermelhos:0, gols:0, impedimentos:0 });
+                         cartoes_amarelos:0, cartoes_vermelhos:0, gols:0, impedimentos:0,
+                         defesas:0 });
   const aggByTimePeriod = new Map();
   for (const team of [partida.home_team, partida.away_team]) {
     aggByTimePeriod.set(team, { FT: empty(), HT: empty(), '2T': empty() });
@@ -81,6 +97,22 @@ function loadMatchStats(db, match_id) {
       if (is2T) slot['2T'][k] += ev[k] ?? 0;
     }
   }
+
+  // Defesas: não vêm em eventos_faixa. Lê de `times` (modo='FT' = total full-match,
+  // modo='HT' = acumulado até o intervalo). 2T derivado por diferença.
+  const tRows = db.prepare(`
+    SELECT time, modo, defesas FROM times WHERE id_confronto = ?
+  `).all(id_confronto);
+  for (const r of tRows) {
+    const slot = aggByTimePeriod.get(r.time);
+    if (!slot) continue;
+    if (r.modo === 'FT') slot.FT.defesas = r.defesas ?? 0;
+    if (r.modo === 'HT') slot.HT.defesas = r.defesas ?? 0;
+  }
+  for (const [, slot] of aggByTimePeriod) {
+    slot['2T'].defesas = Math.max(0, (slot.FT.defesas ?? 0) - (slot.HT.defesas ?? 0));
+  }
+
   return { partida, byTime: aggByTimePeriod };
 }
 
@@ -136,7 +168,7 @@ function extractLabel(market_key) {
 
 function evalSlot(pred, stats) {
   const dir = String(pred.direction || '').toLowerCase();
-  const { partida } = stats;
+  const { partida, byTime } = stats;
   const { home_goals, away_goals } = partida;
 
   if (dir === 'over') {
@@ -148,6 +180,70 @@ function evalSlot(pred, stats) {
     const v = getActualValue(stats, pred);
     if (v == null || pred.line == null) return null;
     return v < pred.line ? 'green' : 'red';
+  }
+  // Family-specific handlers (precisam vir antes do bloco genérico 1x2,
+  // porque direções como 'home'/'away' aparecem em escanteios_race também).
+  if (pred.family === 'escanteios_race') {
+    if (pred.line == null) return null;
+    const homeAgg = byTime.get(partida.home_team)?.FT;
+    const awayAgg = byTime.get(partida.away_team)?.FT;
+    if (!homeAgg || !awayAgg) return null;
+    const hc = homeAgg.escanteios ?? 0;
+    const ac = awayAgg.escanteios ?? 0;
+    const homeHit = hc >= pred.line;
+    const awayHit = ac >= pred.line;
+    if (dir === 'none') return (!homeHit && !awayHit) ? 'green' : 'red';
+    if (dir === 'home') {
+      if (homeHit && !awayHit) return 'green';
+      if (!homeHit) return 'red';
+      return null; // ambos atingiram → ordem temporal não disponível
+    }
+    if (dir === 'away') {
+      if (awayHit && !homeHit) return 'green';
+      if (!awayHit) return 'red';
+      return null;
+    }
+    return null;
+  }
+  if (pred.family === 'dupla') {
+    const period = String(pred.period || 'FT').toUpperCase();
+    let hg, ag;
+    if (period === 'HT' || period === '1T') {
+      hg = partida.home_goals_ht ?? 0; ag = partida.away_goals_ht ?? 0;
+    } else if (period === '2T') {
+      hg = (partida.home_goals ?? 0) - (partida.home_goals_ht ?? 0);
+      ag = (partida.away_goals ?? 0) - (partida.away_goals_ht ?? 0);
+    } else {
+      hg = home_goals ?? 0; ag = away_goals ?? 0;
+    }
+    const actual = hg > ag ? 'home' : hg < ag ? 'away' : 'draw';
+    const accept = { '1x': ['home', 'draw'], '12': ['home', 'away'], 'x2': ['draw', 'away'] }[dir];
+    if (!accept) return null;
+    return accept.includes(actual) ? 'green' : 'red';
+  }
+  if (pred.family === 'htft') {
+    const m = /^([12x])_([12x])$/.exec(dir);
+    if (!m) return null;
+    const [, a, b] = m;
+    const hgHT = partida.home_goals_ht ?? 0;
+    const agHT = partida.away_goals_ht ?? 0;
+    const htRes = hgHT > agHT ? '1' : hgHT < agHT ? '2' : 'x';
+    const hgFT = home_goals ?? 0;
+    const agFT = away_goals ?? 0;
+    const ftRes = hgFT > agFT ? '1' : hgFT < agFT ? '2' : 'x';
+    return (a === htRes && b === ftRes) ? 'green' : 'red';
+  }
+  if (pred.family === 'asian_handicap') {
+    if (pred.line == null || home_goals == null || away_goals == null) return null;
+    const mDir = /^(home|away)_(plus|minus)_/.exec(dir);
+    if (!mDir) return null;
+    const side = mDir[1];
+    const own = side === 'home' ? home_goals : away_goals;
+    const opp = side === 'home' ? away_goals : home_goals;
+    const adjusted = own + pred.line - opp;
+    if (adjusted > 0) return 'green';
+    if (adjusted < 0) return 'red';
+    return null; // push em linha inteira: deixa não resolvido (sem 'void' no schema)
   }
   // Label markets — direction direto: 'sim'/'nao' (btts), 'home'/'draw'/'away' (1x2).
   // Settler aceita também 'label' (legacy compat) e usa extractLabel(market_key).
@@ -178,6 +274,38 @@ function evalSlot(pred, stats) {
     if (s === 'away') return ((away_goals ?? 0) + pred.line) > (home_goals ?? 0) ? 'green' : 'red';
     return null;
   }
+  return null;
+}
+
+// ── Valor real apurado (para exibição lado-a-lado "predito X · real Y") ─────
+// Retorna número quando o mercado é numérico (over/under, race, defesas);
+// retorna null para mercados de label puros (btts, 1x2, dupla, htft, AH).
+function computeActualValue(pred, stats) {
+  const dir = String(pred.direction || '').toLowerCase();
+  const { partida, byTime } = stats;
+
+  if (dir === 'over' || dir === 'under') {
+    const v = getActualValue(stats, pred);
+    return Number.isFinite(v) ? v : null;
+  }
+  if (pred.family === 'gols') {
+    const v = getActualValue(stats, pred);
+    return Number.isFinite(v) ? v : null;
+  }
+  if (pred.family === 'escanteios_race') {
+    const homeAgg = byTime.get(partida.home_team)?.FT;
+    const awayAgg = byTime.get(partida.away_team)?.FT;
+    if (!homeAgg || !awayAgg) return null;
+    const hc = homeAgg.escanteios ?? 0;
+    const ac = awayAgg.escanteios ?? 0;
+    if (dir === 'home') return hc;
+    if (dir === 'away') return ac;
+    if (dir === 'none') return Math.max(hc, ac);
+    return null;
+  }
+  // Para gols/1x2/btts/dupla/htft/ah o "valor real" útil é o placar.
+  // Codificamos como home_goals * 100 + away_goals? Não — mantemos null
+  // (UI cai para badge GREEN/RED puro).
   return null;
 }
 
@@ -252,7 +380,7 @@ export function settle(db, { run_id, date, liga, dryRun = false, ewmaAlpha = 0.1
   };
 
   const update = dryRun ? null : db.prepare(
-    `UPDATE prediction SET result = ?, settled_at = datetime('now') WHERE run_id = ? AND market_key = ?`
+    `UPDATE prediction SET result = ?, actual_value = ?, settled_at = datetime('now') WHERE run_id = ? AND match_id = ? AND market_key = ?`
   );
 
   const insertClv = dryRun ? null : db.prepare(`
@@ -273,7 +401,8 @@ export function settle(db, { run_id, date, liga, dryRun = false, ewmaAlpha = 0.1
     if (!stats) { no_data++; continue; }
     const out = evalSlot(p, stats);
     if (out == null) { skipped++; continue; }
-    if (!dryRun) update.run(out, p.run_id, p.market_key);
+    const actual = computeActualValue(p, stats);
+    if (!dryRun) update.run(out, actual, p.run_id, p.match_id, p.market_key);
     settled++;
 
     const isGreen = out === 'green';

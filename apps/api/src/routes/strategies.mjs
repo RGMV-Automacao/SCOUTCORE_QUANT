@@ -1,6 +1,50 @@
 import { randomUUID } from 'node:crypto';
 import { applyStrategy, listStrategies, getStrategyConfig } from '@scoutcore/strategy-engine';
 import { getRunsStore } from './runs.mjs';
+import { validateYankeeAgainstSuperbet } from '../yankee-superbet-validator.mjs';
+
+/**
+ * Enriquece o retorno de applyStrategy com `result` (green/red) e
+ * `actual_value` por (match_id, market_key) — vindos de `prediction`
+ * após o settler. Permite UI mostrar badges e valor real em todas as
+ * telas (yankee/singles-ev/duplas/board) sem alterar o strategy-engine.
+ */
+function enrichWithSettlement(repo, runId, result) {
+  if (!runId || !result || typeof result !== 'object') return result;
+  let rows;
+  try {
+    rows = repo.db.prepare(
+      'SELECT match_id, market_key, result, actual_value FROM prediction WHERE run_id = ?'
+    ).all(runId);
+  } catch {
+    return result;
+  }
+  if (!rows.length) return result;
+  const map = new Map();
+  for (const r of rows) map.set(`${r.match_id}::${r.market_key}`, r);
+
+  const visit = (node, parentMid = null) => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item, parentMid);
+      return;
+    }
+    const mid = node.match_id ?? parentMid;
+    if (mid && node.market_key) {
+      const hit = map.get(`${mid}::${node.market_key}`);
+      if (hit) {
+        if (node.result == null) node.result = hit.result ?? null;
+        if (node.actual_value == null) node.actual_value = hit.actual_value ?? null;
+      }
+    }
+    for (const k of Object.keys(node)) {
+      const v = node[k];
+      if (v && typeof v === 'object') visit(v, mid);
+    }
+  };
+  visit(result);
+  return result;
+}
 
 /**
  * Endpoint para aplicar estratégias sobre slots de um run.
@@ -32,6 +76,7 @@ export function registerStrategies(app, { repo }) {
       return reply.code(400).send({ error: result.error });
     }
 
+    enrichWithSettlement(repo, id, result);
     return result;
   });
 
@@ -58,9 +103,11 @@ export function registerStrategies(app, { repo }) {
 
     const yankee = await applyStrategy('yankee', run.slots, overrides ?? {});
     if (yankee.error) return { __error: yankee.error, __status: 400 };
+    enrichWithSettlement(repo, runId, yankee);
 
     const tickets = Array.isArray(yankee.tickets) ? yankee.tickets : [];
     const warnings = Array.isArray(yankee.board?.warnings) ? [...yankee.board.warnings] : [];
+    let externalValidation = null;
 
     // Validação de submissão (não bloqueia dry-run; bloqueia submit real)
     const blocking = [];
@@ -68,6 +115,27 @@ export function registerStrategies(app, { repo }) {
     const boardStatus = yankee.board?.board_status;
     if (boardStatus && boardStatus !== 'ready' && boardStatus !== 'ok') {
       blocking.push(`board_status:${boardStatus}`);
+    }
+
+    try {
+      externalValidation = await validateYankeeAgainstSuperbet({
+        repo,
+        run,
+        yankee,
+        maxDropPct: Number(process.env.SCOUTCORE_SB_DRY_RUN_MAX_DROP_PCT || 8),
+      });
+      warnings.push(
+        `superbet_validated:${externalValidation.summary.tickets_ok}/${externalValidation.summary.tickets_total}_tickets`
+      );
+      if (externalValidation.summary.boards_failed > 0) {
+        blocking.push(`superbet_boards_failed:${externalValidation.summary.boards_failed}`);
+      }
+      if (externalValidation.summary.gaps_total > 0) {
+        blocking.push(`superbet_gaps:${externalValidation.summary.gaps_total}`);
+      }
+    } catch (error) {
+      warnings.push(`superbet_validation_error:${error.message}`);
+      if (!isDryRun) blocking.push('superbet_validation_unavailable');
     }
 
     const stakeTotal = +(tickets.length * stake).toFixed(2);
@@ -99,6 +167,8 @@ export function registerStrategies(app, { repo }) {
       stake_total: stakeTotal,
       blocking,
       warnings,
+      validation_scope: externalValidation ? 'local_board_plus_superbet_catalog' : 'local_board_only',
+      external_validation: externalValidation,
       board: yankee.board ?? null,
       tickets,
     };

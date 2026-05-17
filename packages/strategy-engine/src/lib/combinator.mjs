@@ -7,19 +7,19 @@
  */
 
 import { checkContradiction } from './contradiction.mjs';
+import { getStrategyEngineGovernance } from '@scoutcore/quality-gates';
+import { normalizeFamily } from './family-aliases.mjs';
 
-const TRUSTED_FAMILIES = new Set(['gols', 'btts', 'resultado', 'dupla_chance']);
-const FAMILY_RELIABILITY = {
-  gols: 1.00, btts: 1.00, resultado: 0.85, dupla_chance: 0.82,
-  escanteios: 0.70, cartoes: 0.42, chutes: 0.30, finalizacoes: 0.25, faltas: 0.20,
-};
+const STRATEGY_ENGINE_GOVERNANCE = getStrategyEngineGovernance();
+const TRUSTED_FAMILIES = STRATEGY_ENGINE_GOVERNANCE.trusted_families;
+const FAMILY_RELIABILITY = STRATEGY_ENGINE_GOVERNANCE.family_reliability;
 
 function reliabilityOf(family) {
-  return FAMILY_RELIABILITY[family] ?? 0.50;
+  return FAMILY_RELIABILITY[normalizeFamily(family)] ?? 0.50;
 }
 
 function directionGroup(slot) {
-  return `${slot.family}|${slot.scope}|${slot.period}|${slot.direction}`;
+  return `${normalizeFamily(slot.family)}|${slot.scope}|${slot.period}|${slot.direction}`;
 }
 
 export function selectCandidates(slots, gates) {
@@ -32,6 +32,11 @@ export function selectCandidates(slots, gates) {
     // Removido check rígido de fair_odd_curinga para usar fair_prob genérico
     if (s.fair_prob == null || s.fair_prob > 0.95) return false;
     if (gates.suspendedFamilies && gates.suspendedFamilies.has(s.family)) return false;
+    if (gates.suspendedMarketKeys?.size && gates.suspendedMarketKeys.has(s.market_key)) return false;
+    if (gates.suspendedMarketKeyPrefixes?.length) {
+      const mk = s.market_key ?? '';
+      if (gates.suspendedMarketKeyPrefixes.some((p) => mk.startsWith(p))) return false;
+    }
     return true;
   });
 
@@ -67,12 +72,13 @@ function scoreSubset(legs, gates) {
   const jointProb = legs.reduce((p, l) => p * (l.fair_prob ?? 0.5), 1);
   const odds = legs.map((l) => l.market_odd);
   const sbProduct = odds.reduce((p, o) => p * o, 1);
-  const disc = legs.length >= 4 ? gates.builderDiscountBase : 1.0;
+  const minDiscountLegs = gates.builderDiscountMinLegs ?? 3;
+  const disc = legs.length >= minDiscountLegs ? gates.builderDiscountBase : 1.0;
   const comboOddBruta = sbProduct;
   const comboOdd = Number((sbProduct * disc).toFixed(3));
 
-  const families = [...new Set(legs.map((l) => l.family))];
-  const trustedCount = legs.filter((l) => TRUSTED_FAMILIES.has(l.family)).length;
+  const families = [...new Set(legs.map((l) => normalizeFamily(l.family)))];
+  const trustedCount = legs.filter((l) => TRUSTED_FAMILIES.has(normalizeFamily(l.family))).length;
   const avgReliability = legs.reduce((s, l) => s + reliabilityOf(l.family), 0) / legs.length;
 
   const qualityScore = Number(
@@ -116,7 +122,7 @@ function findBestSubset(pool, gates) {
       if (conflict) continue;
 
       const scored = scoreSubset(subset, gates);
-      if (scored.n_legs >= 3 && scored.n_families < 2) continue;
+      if (scored.n_families !== scored.n_legs) continue;
       if (scored.combo_odd < gates.oddCombinedMin) continue;
       if (scored.combo_odd > oddMaxForN) continue;
 
@@ -143,7 +149,8 @@ export function buildCombo(slots, gates) {
 
   const byFamily = {};
   for (const c of candidates) {
-    if (!byFamily[c.family]) byFamily[c.family] = c;
+    const family = normalizeFamily(c.family);
+    if (!byFamily[family]) byFamily[family] = c;
   }
   const pool = Object.values(byFamily);
 

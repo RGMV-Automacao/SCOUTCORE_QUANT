@@ -77,8 +77,17 @@ export function buildYankee(validation, gates) {
     const ticket_odd = Number(picked.reduce((acc, c) => acc * Number(c.combo_odd ?? 1), 1).toFixed(4));
     return {
       ticket_idx: ticketIdx,
+      status: 'pending',
       confronto_indices: indices.slice(),
       match_ids: picked.map((c) => c.match_id ?? c.opta_match_id ?? null),
+      boards: picked.map((c) => ({
+        match_id: c.match_id ?? c.opta_match_id ?? null,
+        status: 'pending',
+        legs: (c.legs || []).map((l) => ({
+          market_key: l.market_key,
+          status: 'pending'
+        }))
+      })),
       ticket_odd,
       stake_brl: gates.stakePerCombo,
     };

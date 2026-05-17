@@ -20,9 +20,12 @@ function extractGates(params) {
     oddCombinedMax: params.odd_combo_range?.[1] ?? 3.50,
     oddCombinedMaxException: params.odd_combo_exception ?? 3.80,
     builderDiscountBase: params.builder_discount ?? 0.854,
+    builderDiscountMinLegs: params.builder_discount_min_legs ?? 3,
     oddMinLeg: params.odd_leg_range?.[0] ?? 1.20,
     oddMaxLeg: params.odd_leg_range?.[1] ?? 2.10,
     suspendedFamilies: new Set(params.suspended_families ?? []),
+    suspendedMarketKeys: new Set(params.suspended_market_keys ?? []),
+    suspendedMarketKeyPrefixes: params.suspended_market_key_prefixes ?? [],
     
     // Board validation
     minConfrontos: params.min_confrontos ?? 10,

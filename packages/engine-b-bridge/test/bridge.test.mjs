@@ -30,3 +30,32 @@ test('ping sidecar offline → available:false', async () => {
   const r = await p2();
   assert.equal(r.available, false);
 });
+
+test('predictBatch canonicaliza market_key legado do sidecar', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => new Response(JSON.stringify({
+    available: true,
+    version: 'test-sidecar',
+    slots: [
+      { market_key: 'btts_sim', fair_prob: 0.61 },
+      { market_key: '1x2_home', fair_prob: 0.48 },
+      { market_key: 'resultado_dupla_ft_1x', fair_prob: 0.73 },
+    ],
+  }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+  try {
+    const { predictBatch: pb } = await import('../src/index.mjs?bust3');
+    const r = await pb({ liga: 'l', home: 'h', away: 'a', data: '2025-01-01' });
+    assert.equal(r.available, true);
+    assert.deepEqual(r.slots.map((s) => s.market_key), [
+      'btts_total_ft_sim',
+      '1x2_total_ft_home',
+      'dupla_total_ft_1x',
+    ]);
+    assert.deepEqual(r.slots.map((s) => s.family), ['btts', '1x2', 'dupla']);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

@@ -1,7 +1,7 @@
 // curinga test — combine A/B + sanity gates
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { combine, CURINGA_VERSION } from '../src/index.mjs';
+import { combine, CURINGA_VERSION, A_ONLY_CONFIDENCE_FACTOR } from '../src/index.mjs';
 
 test('CURINGA_VERSION', () => assert.equal(typeof CURINGA_VERSION, 'string'));
 
@@ -10,6 +10,11 @@ test('B unavailable → A pure with provenance', () => {
   const out = combine({ slotsA: a, slotsB: null });
   assert.equal(out[0].provenance.weight_a, 1);
   assert.equal(out[0].provenance.weight_b, 0);
+  assert.equal(out[0].provenance.fair_prob_a, 0.6);
+  assert.equal(out[0].provenance.fair_odd_a, 1.6667);
+  assert.equal(out[0].provenance.fair_prob_b, null);
+  assert.equal(out[0].provenance.fair_odd_b, null);
+  assert.equal(out[0].provenance.a_only_confidence_factor, A_ONLY_CONFIDENCE_FACTOR);
   assert.equal(out[0].provenance.divergence_resolved_by, 'engine_b_unavailable');
 });
 
@@ -21,6 +26,8 @@ test('B available → calibration weighted and flagged when divergence is high',
   assert.ok(Math.abs(out[0].fair_prob - 0.52) < 1e-9);
   assert.equal(out[0].provenance.fair_prob_a, 0.60);
   assert.equal(out[0].provenance.fair_prob_b, 0.40);
+  assert.equal(out[0].provenance.fair_odd_a, 1.6667);
+  assert.equal(out[0].provenance.fair_odd_b, 2.5);
   assert.equal(out[0].provenance.weight_a, 0.6);
   assert.equal(out[0].provenance.weight_b, 0.4);
   assert.equal(out[0].provenance.divergence_resolved_by, 'flagged_divergence');
@@ -35,6 +42,11 @@ test('A-only (no B counterpart) → kept with engine_b_no_slot', () => {
   const out = combine({ slotsA: a, slotsB: b });
   const aOut = out.find((s) => s.market_key === 'kA');
   assert.equal(aOut.provenance.divergence_resolved_by, 'engine_b_no_slot');
+  assert.equal(aOut.provenance.fair_prob_a, 0.5);
+  assert.equal(aOut.provenance.fair_odd_a, 2);
+  assert.equal(aOut.provenance.fair_prob_b, null);
+  assert.equal(aOut.provenance.fair_odd_b, null);
+  assert.equal(aOut.provenance.a_only_confidence_factor, A_ONLY_CONFIDENCE_FACTOR);
 });
 
 test('B-only slot → appended with weight_b=1', () => {
@@ -46,6 +58,10 @@ test('B-only slot → appended with weight_b=1', () => {
   assert.equal(bOnly.source, 'engine_b_only');
   assert.equal(bOnly.provenance.weight_a, 0);
   assert.equal(bOnly.provenance.weight_b, 1);
+  assert.equal(bOnly.provenance.fair_prob_a, null);
+  assert.equal(bOnly.provenance.fair_odd_a, null);
+  assert.equal(bOnly.provenance.fair_prob_b, 0.6);
+  assert.equal(bOnly.provenance.fair_odd_b, 1.6667);
   assert.equal(bOnly.family, 'gols');
 });
 

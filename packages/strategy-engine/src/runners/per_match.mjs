@@ -151,20 +151,32 @@ export function run(slots, params = {}) {
         legs: legs.map((l) => ({
           market_key: l.market_key,
           family: l.family,
+          scope: l.scope,
+          period: l.period,
           direction: l.direction,
           line: l.line,
           fair_prob: l.fair_prob,
           market_odd: l.market_odd,
           edge_pct: l.edge_pct,
           ev_real: +evReal(l).toFixed(4),
+          sb_market: l.provenance?.odd?.mercado ?? null,
+          sb_selection: l.provenance?.odd?.selecao ?? null,
         })),
       });
     }
   }
 
-  // 4. Ranquear e truncar
+  // 4. Ranquear, manter só a melhor dupla por confronto e truncar
   combos.sort((a, b) => b.rank_value - a.rank_value);
-  const picks = combos.slice(0, topN);
+  const seenMatches = new Set();
+  const picks = [];
+  for (const combo of combos) {
+    const key = combo.match_id ?? `${combo.home}_${combo.away}`;
+    if (seenMatches.has(key)) continue;
+    seenMatches.add(key);
+    picks.push(combo);
+    if (picks.length >= topN) break;
+  }
 
   return {
     picks,
@@ -173,6 +185,7 @@ export function run(slots, params = {}) {
       eligible_legs: eligible.length,
       matches_with_combos: byMatch.size,
       combos_generated: combos.length,
+      unique_matches: picks.length,
       top_n: topN,
     },
   };

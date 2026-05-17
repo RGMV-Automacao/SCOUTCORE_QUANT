@@ -1,10 +1,10 @@
 {
   "id": "bingo-resultado",
   "label": "Bingo Resultado",
-  "description": "Top N picks de 1x2/resultado por confiança",
+  "description": "Top N picks de 1x2/dupla por confiança",
   "type": "family_filter",
   "params": {
-    "families": ["resultado", "1x2", "dupla_chance"],
+    "families": ["1x2", "dupla"],
     "periods": ["FT"],
     "rank_by": "confidence",
     "top_n": 7,

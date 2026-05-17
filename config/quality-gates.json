@@ -201,9 +201,39 @@
     "finalizacoes": 3,
     "cartoes": 3,
     "faltas": 3,
+    "1x2": 4,
+    "dupla": 4,
+    "dupla_chance": 4,
     "resultado": 4,
     "btts": 2,
     "_default": 5
+  },
+  "shared": {
+    "strategy_engine": {
+      "trusted_families": ["gols", "btts", "1x2", "dupla"],
+      "family_reliability": {
+        "gols": 1.0,
+        "btts": 1.0,
+        "1x2": 0.85,
+        "dupla": 0.82,
+        "escanteios": 0.7,
+        "cartoes": 0.42,
+        "chutes": 0.3,
+        "finalizacoes": 0.25,
+        "faltas": 0.2
+      }
+    },
+    "curinga": {
+      "consensus_max_pp": 5,
+      "divergence_flag_pp": 15,
+      "fair_odd_flag_pct": 20,
+      "a_only_confidence_factor": 0.85,
+      "reliability_boost": 0.1,
+      "family_reliability": {
+        "engine_a": ["gols", "escanteios", "chutes", "chutes_alvo", "faltas", "cartoes", "impedimentos", "defesas", "escanteios_race"],
+        "engine_b": ["1x2", "btts", "htft", "dupla", "cartoes_1x2", "escanteios_1x2", "btts_algum_tempo"]
+      }
+    }
   },
   "penalties": {
     "brasileirao_over_btts": 8

@@ -69,6 +69,9 @@ function shouldFireCron(job, now) {
   return true;
 }
 
+import Database from 'better-sqlite3';
+import { settleTickets } from './routes/settle-tickets.mjs';
+
 function spawnJob(job, log) {
   const args = job.args();
   log.info?.({ job: job.name, args }, '[scheduler] firing');
@@ -76,7 +79,20 @@ function spawnJob(job, log) {
     stdio: 'inherit',
     env: process.env,
   });
-  child.on('exit', (code) => log.info?.({ job: job.name, code }, '[scheduler] finished'));
+  child.on('exit', (code) => {
+    log.info?.({ job: job.name, code }, '[scheduler] finished');
+    if (job.name === 'settle-results' && code === 0) {
+      try {
+        const dbPath = process.env.SCOUT_DB || resolve(process.cwd(), 'data', 'scout.db');
+        const db = new Database(dbPath);
+        const ticketResult = settleTickets(db);
+        log.info?.({ ticketResult }, '[scheduler] settleTickets concluído');
+        db.close();
+      } catch (err) {
+        log.error?.({ err: err.message }, '[scheduler] settleTickets falhou');
+      }
+    }
+  });
   child.on('error', (err) => log.error?.({ job: job.name, err: err.message }, '[scheduler] spawn_failed'));
 }
 

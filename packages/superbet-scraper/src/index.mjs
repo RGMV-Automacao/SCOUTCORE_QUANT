@@ -13,6 +13,7 @@
 import { createRequire } from 'module';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import { canonicalizeMarketKey } from '@scoutcore/markets';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -191,18 +192,18 @@ function canonicalMarketKey(rec) {
     if (line == null || !Number.isFinite(Number(line))) return null;
     const direction = outcome === 'mais' ? 'over' : 'under';
     const lineNoDot = String(line).replace('.', '_');
-    return `${family}_${scope}_${pLow}_${direction}_${lineNoDot}`;
+    return canonicalizeMarketKey(`${family}_${scope}_${pLow}_${direction}_${lineNoDot}`);
   }
   if (family === 'gols' && scope === 'total' && (outcome === 'sim' || outcome === 'nao')) {
     if (!/Ambas as Equipes Marcam$/.test(heading)) return null;
-    return `btts_${pLow}_${outcome}`;
+    return canonicalizeMarketKey(`btts_${pLow}_${outcome}`);
   }
   if (family === 'resultado' && ['1', 'X', '2'].includes(outcome)) {
     const dir = outcome === '1' ? 'home' : outcome === 'X' ? 'draw' : 'away';
-    return `resultado_1x2_${pLow}_${dir}`;
+    return canonicalizeMarketKey(`resultado_1x2_${pLow}_${dir}`);
   }
   if (family === 'resultado' && ['1X', '12', 'X2'].includes(outcome)) {
-    return `resultado_dupla_${pLow}_${outcome.toLowerCase()}`;
+    return canonicalizeMarketKey(`resultado_dupla_${pLow}_${outcome.toLowerCase()}`);
   }
   return null;
 }

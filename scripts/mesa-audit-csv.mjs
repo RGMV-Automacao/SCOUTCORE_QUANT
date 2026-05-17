@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import { resolve, join } from 'node:path';
 
-const DEFAULT_API = process.env.API_URL || 'http://127.0.0.1:4042';
+const DEFAULT_API = process.env.API_URL || 'http://127.0.0.1:4040';
 
 function parseArgs(argv) {
   const args = {};
@@ -18,7 +18,7 @@ function parseArgs(argv) {
 }
 
 function usage() {
-  return `Uso: node scripts/mesa-audit-csv.mjs --input=mesa.json [--out=audit/mesa-2026-05-10] [--api=http://127.0.0.1:4042]\n\nFormato do input:\n{\n  "mesa_id": "mesa-2026-05-10",\n  "fixtures": [\n    {\n      "match": {\n        "external_id": "mesa:1",\n        "home": "Liverpool",\n        "away": "Chelsea",\n        "liga": "premier-league",\n        "date": "2026-05-10",\n        "hora": "16:00"\n      },\n      "odds_snapshot": {\n        "gols_total_ft_over_2_5": 1.85,\n        "btts_total_ft_sim": 1.75\n      },\n      "closing_odds_snapshot": {\n        "gols_total_ft_over_2_5": 1.78\n      },\n      "market_results": {\n        "gols_total_ft_over_2_5": "green"\n      }\n    }\n  ]\n}\n`;
+  return `Uso: node scripts/mesa-audit-csv.mjs --input=mesa.json [--out=audit/mesa-2026-05-10] [--api=http://127.0.0.1:4040]\n\nFormato do input:\n{\n  "mesa_id": "mesa-2026-05-10",\n  "fixtures": [\n    {\n      "match": {\n        "external_id": "mesa:1",\n        "home": "Liverpool",\n        "away": "Chelsea",\n        "liga": "premier-league",\n        "date": "2026-05-10",\n        "hora": "16:00"\n      },\n      "odds_snapshot": {\n        "gols_total_ft_over_2_5": 1.85,\n        "btts_total_ft_sim": 1.75\n      },\n      "closing_odds_snapshot": {\n        "gols_total_ft_over_2_5": 1.78\n      },\n      "market_results": {\n        "gols_total_ft_over_2_5": "green"\n      }\n    }\n  ]\n}\n`;
 }
 
 function readInput(path) {
@@ -54,6 +54,22 @@ function asJson(value) {
 
 function toNumber(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function oddFromProb(prob) {
+  const value = toNumber(prob);
+  if (value == null || value <= 0) return '';
+  return +(1 / value).toFixed(4);
+}
+
+function formatOdd(value) {
+  const numeric = toNumber(value);
+  if (numeric == null || numeric <= 0) return '';
+  return +numeric.toFixed(4);
+}
+
+function firstValue(...values) {
+  return values.find((value) => value !== '' && value != null) ?? '';
 }
 
 function isGreenResult(result) {
@@ -94,6 +110,7 @@ function buildRequest(fixture) {
   }
   return {
     contract_version: fixture.contract_version || '1.0.0',
+    ...(fixture.client ? { client: fixture.client } : {}),
     match: {
       external_id: match.external_id || `${match.liga}:${match.home}:${match.away}:${match.date}`,
       home: match.home,
@@ -104,11 +121,13 @@ function buildRequest(fixture) {
     },
     odds_snapshot: fixture.odds_snapshot || {},
     market_alias_map: fixture.market_alias_map || {},
+    ...(fixture.match_context ? { match_context: fixture.match_context } : {}),
     options: {
       include_engines: fixture.options?.include_engines || ['A', 'B'],
       scout: fixture.options?.scout ?? true,
       min_edge_pp: fixture.options?.min_edge_pp,
       suppress_markets: fixture.options?.suppress_markets || [],
+      ...(fixture.options?.feature_set ? { feature_set: fixture.options.feature_set } : {}),
     },
   };
 }
@@ -154,10 +173,14 @@ function slotRow({ mesaId, fixtureIndex, response, request, meta, slot }) {
   const fairProb = toNumber(slot.fair_prob);
   const marketOdd = toNumber(slot.market_odd);
   const inputOdd = request.odds_snapshot?.[slot.market_key] ?? '';
+  const oddReal = firstValue(inputOdd, marketOdd);
   const closingOdd = meta.closingOdds?.[slot.market_key] ?? '';
   const settlementResult = meta.marketResults?.[slot.market_key] ?? '';
   const resultObservable = meta.resultObservable?.[slot.market_key] ?? meta.resultObservable?.default ?? '';
   const openingOdd = inputOdd || marketOdd;
+  const oddFinalCuringa = firstValue(formatOdd(slot.fair_odd), oddFromProb(slot.fair_prob));
+  const predOddA = firstValue(formatOdd(provenance.fair_odd_a), oddFromProb(provenance.fair_prob_a));
+  const predOddB = firstValue(formatOdd(provenance.fair_odd_b), oddFromProb(provenance.fair_prob_b));
   const closingOddSane = isClosingOddSane(openingOdd, closingOdd);
   return {
     mesa_id: mesaId,
@@ -188,8 +211,12 @@ function slotRow({ mesaId, fixtureIndex, response, request, meta, slot }) {
     fair_prob_raw: slot.fair_prob_raw ?? '',
     fair_prob: slot.fair_prob ?? '',
     fair_odd: slot.fair_odd ?? '',
+    fair_prob_curinga_final: slot.fair_prob ?? '',
+    odd_final_curinga: oddFinalCuringa,
     market_odd: slot.market_odd ?? '',
     input_odd: inputOdd,
+    odd_real: oddReal,
+    implied_prob_real: oddReal !== '' ? +(1 / oddReal).toFixed(6) : '',
     odd_real_in_request: inputOdd !== '',
     closing_odd: closingOdd,
     closing_odd_real_in_request: closingOdd !== '',
@@ -211,6 +238,10 @@ function slotRow({ mesaId, fixtureIndex, response, request, meta, slot }) {
     weight_source: provenance.weight_source || '',
     fair_prob_a: provenance.fair_prob_a ?? '',
     fair_prob_b: provenance.fair_prob_b ?? '',
+    pred_odd_motor_a: predOddA,
+    pred_odd_motor_b: predOddB,
+    fair_odd_a: predOddA,
+    fair_odd_b: predOddB,
     lambda_home: provenance.lambda_home ?? '',
     lambda_away: provenance.lambda_away ?? '',
     lambda_total: provenance.lambda_for_slot ?? provenance.lambda_total ?? '',
@@ -255,7 +286,9 @@ function rankedRows({ mesaId, fixtureIndex, response, request, meta }) {
       market_key: marketKey,
       family: slot.family || '',
       fair_prob: slot.fair_prob ?? '',
+      odd_final_curinga: firstValue(formatOdd(slot.fair_odd), oddFromProb(slot.fair_prob)),
       market_odd: slot.market_odd ?? '',
+      odd_real: firstValue(request.odds_snapshot?.[marketKey], slot.market_odd),
       closing_odd: meta.closingOdds?.[marketKey] ?? '',
       settlement_result: meta.marketResults?.[marketKey] ?? '',
       brier_motor: brier(slot.fair_prob, meta.marketResults?.[marketKey] ?? ''),
@@ -267,6 +300,8 @@ function rankedRows({ mesaId, fixtureIndex, response, request, meta }) {
       weight_b: slot.provenance?.weight_b ?? '',
       fair_prob_a: slot.provenance?.fair_prob_a ?? '',
       fair_prob_b: slot.provenance?.fair_prob_b ?? '',
+      pred_odd_motor_a: firstValue(formatOdd(slot.provenance?.fair_odd_a), oddFromProb(slot.provenance?.fair_prob_a)),
+      pred_odd_motor_b: firstValue(formatOdd(slot.provenance?.fair_odd_b), oddFromProb(slot.provenance?.fair_prob_b)),
       divergence_pp: slot.provenance?.divergence_pp ?? '',
       phantom_edge_flag: slot.provenance?.phantom_edge_flag ?? false,
       market_gate_reasons: (slot.provenance?.qg?.market_gate?.reasons || []).join('|'),
@@ -332,6 +367,10 @@ async function main() {
     const response = await predict(api, request);
     const fixtureIndex = index + 1;
     fs.writeFileSync(join(rawDir, `${String(fixtureIndex).padStart(2, '0')}-${request.match.external_id.replace(/[^a-zA-Z0-9_.-]+/g, '_')}.json`), JSON.stringify(response, null, 2), 'utf8');
+    if (fixtures.length === 1) {
+      fs.writeFileSync(join(outDir, 'request.json'), JSON.stringify(request, null, 2), 'utf8');
+      fs.writeFileSync(join(outDir, 'response.json'), JSON.stringify(response, null, 2), 'utf8');
+    }
     for (const slot of response.slots || []) allSlots.push(slotRow({ mesaId, fixtureIndex, response, request, meta, slot }));
     allRanked.push(...rankedRows({ mesaId, fixtureIndex, response, request, meta }));
     summaries.push(summaryRow({ mesaId, fixtureIndex, response, request, meta }));
@@ -343,10 +382,11 @@ async function main() {
     'latency_ms','engine_a_ms','engine_b_ms','curinga_ms',
     'market_key','ev_rank','family','scope','period','direction','line',
     'fair_prob_raw','fair_prob','fair_odd','market_odd','input_odd','odd_real_in_request',
+    'fair_prob_curinga_final','odd_final_curinga','odd_real','implied_prob_real',
     'closing_odd','closing_odd_real_in_request','closing_odd_sane','settlement_result','result_observable',
     'brier_motor','brier_a','brier_b','clv_pct',
     'edge_pct','expected_value_pct','confidence','certified_slot','source','engine',
-    'weight_a','weight_b','weight_source','fair_prob_a','fair_prob_b',
+    'weight_a','weight_b','weight_source','fair_prob_a','fair_prob_b','pred_odd_motor_a','pred_odd_motor_b','fair_odd_a','fair_odd_b',
     'lambda_home','lambda_away','lambda_total','league_avg',
     'divergence_pp','divergence_flag','divergence_resolved_by','phantom_edge_flag',
     'isotonic_applied','isotonic_reason','isotonic_p_before','isotonic_p_after','isotonic_n_samples',
@@ -356,8 +396,8 @@ async function main() {
   ];
   const rankedHeaders = [
     'mesa_id','fixture_index','rank','external_id','liga','date','hora','home','away',
-    'market_key','family','fair_prob','market_odd','closing_odd','settlement_result','brier_motor','clv_pct','edge_pct','confidence','certified_slot',
-    'weight_a','weight_b','fair_prob_a','fair_prob_b','divergence_pp','phantom_edge_flag','market_gate_reasons',
+    'market_key','family','fair_prob','odd_final_curinga','market_odd','odd_real','closing_odd','settlement_result','brier_motor','clv_pct','edge_pct','confidence','certified_slot',
+    'weight_a','weight_b','fair_prob_a','fair_prob_b','pred_odd_motor_a','pred_odd_motor_b','divergence_pp','phantom_edge_flag','market_gate_reasons',
   ];
   const summaryHeaders = [
     'mesa_id','fixture_index','run_id','external_id','liga','date','hora','home','away',
@@ -378,7 +418,7 @@ async function main() {
     slots_count: allSlots.length,
     ranked_count: allRanked.length,
     generated_at: new Date().toISOString(),
-    files: ['mesa_summary.csv', 'mesa_ranked.csv', 'mesa_slots.csv', 'audit_unified.csv', 'raw/*.json'],
+    files: ['request.json', 'response.json', 'mesa_summary.csv', 'mesa_ranked.csv', 'mesa_slots.csv', 'audit_unified.csv', 'raw/*.json'],
   }, null, 2), 'utf8');
 
   console.log(`[mesa] wrote ${outDir}`);

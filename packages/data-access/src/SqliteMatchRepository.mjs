@@ -64,7 +64,7 @@ export class SqliteMatchRepository {
          ORDER BY time, faixa`),
 
       getMatchesByDateRange: this.db.prepare(`
-        SELECT id_confronto, liga, home_team, away_team, data_partida, hora_partida
+        SELECT id_confronto, liga, home_team, away_team, data_partida, hora_partida, status
           FROM partidas
          WHERE date(data_partida) >= date(?) AND date(data_partida) <= date(?)
          ORDER BY data_partida ASC, hora_partida ASC`),

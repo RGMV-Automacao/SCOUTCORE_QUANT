@@ -51,10 +51,19 @@ export function run(slots, params = {}) {
     return true;
   });
 
-  const ranked = filtered
+  const rankedAll = filtered
     .map((s) => ({ ...s, _rank_value: rankValue(s, rankBy), _ev_real: evReal(s) }))
-    .sort((a, b) => b._rank_value - a._rank_value)
-    .slice(0, topN);
+    .sort((a, b) => b._rank_value - a._rank_value);
+
+  const ranked = [];
+  const seenMarkets = new Set();
+  for (const slot of rankedAll) {
+    const key = `${slot.match_id ?? slot.opta_match_id ?? slot.home + '_' + slot.away}|${slot.market_key ?? ''}`;
+    if (seenMarkets.has(key)) continue;
+    seenMarkets.add(key);
+    ranked.push(slot);
+    if (ranked.length >= topN) break;
+  }
 
   // Limpar campos internos
   const picks = ranked.map(({ _rank_value, _ev_real, ...rest }) => ({
@@ -68,6 +77,7 @@ export function run(slots, params = {}) {
     meta: {
       total_input: slots.length,
       after_filter: filtered.length,
+      unique_markets: ranked.length,
       rank_by: rankBy,
       top_n: topN,
     },

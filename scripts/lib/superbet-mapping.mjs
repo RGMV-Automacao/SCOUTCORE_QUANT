@@ -495,10 +495,15 @@ export function lookupSuperbetOdd(db, { market_key, home, away, data }) {
   const plans = buildLookupPlan(market_key, home, away);
   if (plans === null) return { found: false, reason: 'unmapped_in_motor_catalog' };
   if (plans.length === 0) return { found: false, reason: 'mapped_but_invalid_line' };
+  const periodPrefix = periodPrefixForMarketKey(market_key);
 
   for (const p of plans) {
     const where = [`fonte='superbet'`, `home_team=?`, `away_team=?`, `data_jogo=?`];
     const params = [home, away, data];
+    if (periodPrefix) {
+      where.push(`mercado LIKE ?`);
+      params.push(`${periodPrefix}% Tempo - %`);
+    }
     if (p.mercadoEqOrLike.eq != null) {
       where.push(`mercado = ?`);
       params.push(p.mercadoEqOrLike.eq);
@@ -527,6 +532,13 @@ export function lookupSuperbetOdd(db, { market_key, home, away, data }) {
     }
   }
   return { found: false, reason: 'mapped_but_not_offered_by_superbet' };
+}
+
+function periodPrefixForMarketKey(marketKey) {
+  const key = String(marketKey || '').toLowerCase();
+  if (/(^|_)ht(_|$)/.test(key)) return '1';
+  if (/(^|_)2t(_|$)/.test(key)) return '2';
+  return null;
 }
 
 export function mapMarketKey(market_key) {

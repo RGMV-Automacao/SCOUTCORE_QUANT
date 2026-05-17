@@ -6,6 +6,7 @@ export default [
       'venv/**',
       'data/**',
       'fixtures/**',
+      'apps/web/.next/**',
       'apps/ml-sidecar/models/**',
     ],
   },

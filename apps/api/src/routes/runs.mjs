@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { runPredict } from '../predict.mjs';
+import { buildDbOddsResolver } from '../odds-resolver.mjs';
 
 // ── RunProgressStore ──────────────────────────────────────────────────────────
 // In-memory progress tracking for /v1/run. Cliente pode fornecer `run_id`
@@ -63,27 +64,33 @@ class RunProgressStore {
 const RUN_PROGRESS = new RunProgressStore();
 export function getRunProgress() { return RUN_PROGRESS; }
 
+function runLabelFromSeq(seq) {
+  return `RUN #${String(seq).padStart(4, '0')}`;
+}
+
 // Persistent runs store backed by SQLite (tables: runs, run_slots).
 // Mantém a interface antiga (set/get/has/delete/clear/size/values) que
 // strategies.mjs consome via RUNS_CACHE.
 class RunsStore {
   constructor(db) {
     this.db = db;
+    this._ensureRunMetadataColumns();
     this.q = {
-      insertRun: db.prepare('INSERT OR REPLACE INTO runs (run_id, date_start, date_end, matches, created_at) VALUES (?, ?, ?, ?, ?)'),
+      insertRun: db.prepare('INSERT OR REPLACE INTO runs (run_id, date_start, date_end, matches, created_at, run_seq, run_label) VALUES (?, ?, ?, ?, ?, ?, ?)'),
       deleteSlots: db.prepare('DELETE FROM run_slots WHERE run_id = ?'),
       insertSlot: db.prepare('INSERT INTO run_slots (run_id, idx, match_id, market_key, payload) VALUES (?, ?, ?, ?, ?)'),
-      getRun: db.prepare('SELECT run_id, date_start, date_end, matches, created_at FROM runs WHERE run_id = ?'),
+      getRun: db.prepare('SELECT run_id, date_start, date_end, matches, created_at, run_seq, run_label FROM runs WHERE run_id = ?'),
       getSlots: db.prepare('SELECT payload FROM run_slots WHERE run_id = ? ORDER BY idx ASC'),
       countSlots: db.prepare('SELECT COUNT(*) AS n FROM run_slots WHERE run_id = ?'),
-      listRuns: db.prepare('SELECT run_id, date_start, date_end, matches, created_at FROM runs ORDER BY created_at DESC'),
+      listRuns: db.prepare('SELECT run_id, date_start, date_end, matches, created_at, run_seq, run_label FROM runs ORDER BY created_at DESC'),
       deleteRun: db.prepare('DELETE FROM runs WHERE run_id = ?'),
       hasRun: db.prepare('SELECT 1 FROM runs WHERE run_id = ?'),
       countAll: db.prepare('SELECT COUNT(*) AS n FROM runs'),
       clearRuns: db.prepare('DELETE FROM runs'),
+      nextRunSeq: db.prepare('SELECT COALESCE(MAX(run_seq), 0) + 1 AS n FROM runs'),
     };
     this._setTx = db.transaction((run) => {
-      this.q.insertRun.run(run.run_id, run.date_start, run.date_end, run.matches, run.created_at);
+      this.q.insertRun.run(run.run_id, run.date_start, run.date_end, run.matches, run.created_at, run.run_seq, run.run_label);
       this.q.deleteSlots.run(run.run_id);
       let i = 0;
       for (const s of run.slots) {
@@ -91,7 +98,37 @@ class RunsStore {
       }
     });
   }
-  set(runId, run) { this._setTx(run); }
+  _ensureRunMetadataColumns() {
+    const cols = new Set(this.db.prepare('PRAGMA table_info(runs)').all().map((col) => col.name));
+    if (!cols.has('run_seq')) this.db.exec('ALTER TABLE runs ADD COLUMN run_seq INTEGER');
+    if (!cols.has('run_label')) this.db.exec('ALTER TABLE runs ADD COLUMN run_label TEXT');
+
+    const pending = this.db.prepare('SELECT run_id FROM runs WHERE run_seq IS NULL ORDER BY created_at ASC, run_id ASC').all();
+    if (pending.length === 0) return;
+
+    let nextSeq = this.db.prepare('SELECT COALESCE(MAX(run_seq), 0) + 1 AS n FROM runs').get().n;
+    const update = this.db.prepare('UPDATE runs SET run_seq = ?, run_label = ? WHERE run_id = ?');
+    const tx = this.db.transaction((rows) => {
+      for (const row of rows) {
+        update.run(nextSeq, runLabelFromSeq(nextSeq), row.run_id);
+        nextSeq++;
+      }
+    });
+    tx(pending);
+  }
+  set(runId, run) {
+    const existing = this.q.getRun.get(runId);
+    const runSeq = Number.isInteger(Number(run.run_seq)) && Number(run.run_seq) > 0
+      ? Number(run.run_seq)
+      : Number(existing?.run_seq) || Number(this.q.nextRunSeq.get().n);
+    const savedRun = {
+      ...run,
+      run_seq: runSeq,
+      run_label: run.run_label || existing?.run_label || runLabelFromSeq(runSeq),
+    };
+    this._setTx(savedRun);
+    return savedRun;
+  }
   get(runId) {
     const r = this.q.getRun.get(runId);
     if (!r) return null;
@@ -126,115 +163,68 @@ export function getRunsStore() {
   return RUNS_STORE;
 }
 
-// ── Odds helpers ──────────────────────────────────────────────────────────────
-
-// Parse "Mais de 2.5" / "Menos de 2.5" into { dir:'over'|'under', line:'2_5' }
-function parseMaisMenos(selecao, linha) {
-  const mais = selecao.match(/^Mais de (\d+\.?\d*)$/i);
-  if (mais) return { dir: 'over', line: mais[1].replace('.', '_') };
-  const menos = selecao.match(/^Menos de (\d+\.?\d*)$/i);
-  if (menos) return { dir: 'under', line: menos[1].replace('.', '_') };
-  // Fallback: use raw selecao=MAIS/MENOS + linha column
-  if ((selecao === 'MAIS' || selecao === 'MENOS') && linha) {
-    return { dir: selecao === 'MAIS' ? 'over' : 'under', line: String(linha).replace('.', '_') };
-  }
-  return null;
-}
-
-function mapOddsKey(mercado, selecao, linha) {
-  // 1x2 FT
-  if (mercado === 'Resultado Final') {
-    if (selecao === '1') return '1x2_total_ft_home';
-    if (selecao === 'X') return '1x2_total_ft_draw';
-    if (selecao === '2') return '1x2_total_ft_away';
-  }
-  // 1x2 HT
-  if (mercado === '1º Tempo - Resultado (1X2)' || mercado === '1° Tempo - Resultado (1X2)') {
-    if (selecao === '1') return '1x2_total_ht_home';
-    if (selecao === 'X') return '1x2_total_ht_draw';
-    if (selecao === '2') return '1x2_total_ht_away';
-  }
-  // Dupla chance FT
-  if (mercado === 'Dupla Chance') {
-    if (selecao === '1X' || selecao === 'Empate ou 2' === false && selecao.includes('1') && selecao.includes('X')) return 'dupla_total_ft_1x';
-    if (selecao === 'X2' || selecao.includes('X') && selecao.includes('2') && !selecao.includes('1')) return 'dupla_total_ft_x2';
-    if (selecao === '12') return 'dupla_total_ft_12';
-    if (selecao === 'Empate ou 2') return 'dupla_total_ft_x2';
-    if (selecao === '1 ou empate') return 'dupla_total_ft_1x';
-    if (selecao === '1 ou 2') return 'dupla_total_ft_12';
-  }
-  // BTTS FT
-  if (mercado === 'Ambas as Equipes Marcam') {
-    if (selecao === 'Sim') return 'btts_total_ft_sim';
-    if (selecao === 'Não') return 'btts_total_ft_nao';
-  }
-  // BTTS HT
-  if (mercado === '1° Tempo - Ambas as Equipes Marcam' || mercado === '1º Tempo - Ambas as Equipes Marcam') {
-    if (selecao === 'Sim') return 'btts_total_ht_sim';
-    if (selecao === 'Não') return 'btts_total_ht_nao';
-  }
-  // Over/under mercados — all share the same parse logic
-  const OVER_UNDER_MAP = {
-    'Total de Gols':             'gols_total_ft',
-    'Total de Escanteios':       'escanteios_total_ft',
-    'Total de Cartões':          'cartoes_total_ft',
-    'Total de Chutes no Gol':    'chutes_alvo_total_ft',
-    'Total de Finalizações':     'chutes_total_ft',
-    'Total de Faltas':           'faltas_total_ft',
-    'Total de Impedimentos':     'impedimentos_total_ft',
-    'Total de Defesas do Goleiro': 'defesas_total_ft',
-    '1º Tempo - Total de Gols':           'gols_total_ht',
-    '1° Tempo - Total de Gols':           'gols_total_ht',
-    '1º Tempo - Total de Escanteios':     'escanteios_total_ht',
-    '1° Tempo - Total de Escanteios':     'escanteios_total_ht',
-    '1º Tempo - Total de Chutes no Gol':  'chutes_alvo_total_ht',
-    '1° Tempo - Total de Chutes no Gol':  'chutes_alvo_total_ht',
-    '1º Tempo - Total de Cartões':        'cartoes_total_ht',
-    '1° Tempo - Total de Cartões':        'cartoes_total_ht',
+function buildRunOptions(options = {}) {
+  const rawEngines = Array.isArray(options.include_engines) ? options.include_engines : ['A', 'B'];
+  const include_engines = [...new Set(rawEngines.filter((engine) => engine === 'A' || engine === 'B'))];
+  return {
+    include_engines: include_engines.length > 0 ? include_engines : ['A', 'B'],
+    scout: options.scout ?? true,
+    min_edge_pp: Number.isFinite(options.min_edge_pp) ? options.min_edge_pp : 0,
+    suppress_markets: Array.isArray(options.suppress_markets) ? options.suppress_markets : [],
+    feature_set: options.feature_set || 'v3',
   };
-  const prefix = OVER_UNDER_MAP[mercado];
-  if (prefix) {
-    const parsed = parseMaisMenos(selecao, linha);
-    if (parsed) return `${prefix}_${parsed.dir}_${parsed.line}`;
-  }
-  return null;
 }
 
-const ODDS_MERCADOS = [
-  'Resultado Final',
-  '1º Tempo - Resultado (1X2)', '1° Tempo - Resultado (1X2)',
-  'Dupla Chance',
-  'Ambas as Equipes Marcam',
-  '1° Tempo - Ambas as Equipes Marcam', '1º Tempo - Ambas as Equipes Marcam',
-  'Total de Gols', 'Total de Escanteios', 'Total de Cartões',
-  'Total de Chutes no Gol', 'Total de Finalizações', 'Total de Faltas',
-  'Total de Impedimentos', 'Total de Defesas do Goleiro',
-  '1º Tempo - Total de Gols', '1° Tempo - Total de Gols',
-  '1º Tempo - Total de Escanteios', '1° Tempo - Total de Escanteios',
-  '1º Tempo - Total de Chutes no Gol', '1° Tempo - Total de Chutes no Gol',
-  '1º Tempo - Total de Cartões', '1° Tempo - Total de Cartões',
-];
+const BRT_OFFSET_MINUTES = -180;
+const KICKOFF_BUFFER_MINUTES = 30;
+const LIVE_BLOCKED_STATUSES = new Set(['awarded', 'played', 'playing', 'postponed']);
 
-function buildOddsSnapshot(db, home, away, date, log) {
-  let rows = [];
-  try {
-    const placeholders = ODDS_MERCADOS.map(() => '?').join(',');
-    rows = db.prepare(`
-      SELECT mercado, selecao, linha, odd FROM odds
-      WHERE home_team = ? AND away_team = ? AND date(data_jogo) = date(?)
-        AND mercado IN (${placeholders})
-    `).all(home, away, date, ...ODDS_MERCADOS);
-  } catch (err) {
-    (log ?? console).error?.({ err: err.message, home, away, date }, 'buildOddsSnapshot_query_failed');
-    throw new Error(`odds_query_failed:${home}×${away}:${err.message}`);
+function brtDateString(now = new Date()) {
+  return new Date(now.getTime() + BRT_OFFSET_MINUTES * 60_000).toISOString().slice(0, 10);
+}
+
+function brasilDateTimeToUtcMillis(date, time) {
+  const dateMatch = String(date || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const timeMatch = String(time || '').match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!dateMatch || !timeMatch) return null;
+
+  const [, year, month, day] = dateMatch;
+  const [, hour, minute, second = '00'] = timeMatch;
+  const hh = Number(hour);
+  const mm = Number(minute);
+  const ss = Number(second);
+  if (hh > 23 || mm > 59 || ss > 59) return null;
+
+  const localAsUtc = Date.UTC(Number(year), Number(month) - 1, Number(day), hh, mm, ss);
+  return localAsUtc - BRT_OFFSET_MINUTES * 60_000;
+}
+
+function matchFallsInsideLiveKickoffGuard(match, now = new Date()) {
+  if (!match?.data_partida || !match?.hora_partida) return false;
+  if (match.data_partida < brtDateString(now)) return false;
+  const kickoffUtcMillis = brasilDateTimeToUtcMillis(match.data_partida, match.hora_partida);
+  if (kickoffUtcMillis == null) return false;
+  const minutesToKickoff = (kickoffUtcMillis - now.getTime()) / 60_000;
+  return minutesToKickoff < KICKOFF_BUFFER_MINUTES;
+}
+
+function matchPassesRunFilter(match, body = {}, now = new Date()) {
+  const wantedId = body.match_id || body.external_id || body.id_confronto;
+  if (wantedId && match.id_confronto !== wantedId) return false;
+  if (body.liga && match.liga !== body.liga) return false;
+  if ((body.home || body.home_team) && match.home_team !== (body.home || body.home_team)) return false;
+  if ((body.away || body.away_team) && match.away_team !== (body.away || body.away_team)) return false;
+
+  const includeStarted = body.include_started === true || body.options?.include_started === true;
+  if (includeStarted) return true;
+
+  if (match.data_partida >= brtDateString(now)) {
+    const status = String(match.status || '').trim().toLowerCase();
+    if (LIVE_BLOCKED_STATUSES.has(status)) return false;
+    if (matchFallsInsideLiveKickoffGuard(match, now)) return false;
   }
-  const snap = {};
-  for (const r of rows) {
-    const key = mapOddsKey(r.mercado, r.selecao, r.linha);
-    // Keep best (highest) odd when duplicate keys appear
-    if (key && r.odd > 1.01 && (snap[key] == null || r.odd > snap[key])) snap[key] = r.odd;
-  }
-  return snap;
+
+  return true;
 }
 
 /**
@@ -247,7 +237,8 @@ export function registerRuns(app, { repo }) {
   RUNS_STORE = new RunsStore(repo.db);
 
   app.post('/v1/run', async (req, reply) => {
-    const { date_start, date_end, run_id: clientRunId } = req.body ?? {};
+    const body = req.body ?? {};
+    const { date_start, date_end, run_id: clientRunId } = body;
     if (!date_start) return reply.code(400).send({ error: 'date_start_required' });
     const end = date_end || date_start;
 
@@ -260,12 +251,16 @@ export function registerRuns(app, { repo }) {
       ? `run-${date_start}-to-${end}-${safeClientId.slice(0, 16)}`
       : `run-${date_start}-to-${end}-${randomUUID().slice(0, 8)}`;
 
-    const matches = repo.getMatchesByDateRange(date_start, end);
+    const matches = repo.getMatchesByDateRange(date_start, end).filter((match) => matchPassesRunFilter(match, body));
+    const runOptions = buildRunOptions(body.options);
+    const oddsResolver = buildDbOddsResolver(repo.db);
+    const motorRuns = [];
     RUN_PROGRESS.init(runId, { date_start, date_end: end, total_matches: matches.length });
     RUN_PROGRESS.update(runId, { phase: matches.length === 0 ? 'done' : 'predicting' });
 
     const slots = [];
     let mIdx = 0;
+  let savedRun = null;
     try {
       for (const m of matches) {
         mIdx++;
@@ -274,15 +269,6 @@ export function registerRuns(app, { repo }) {
           current_match: { idx: mIdx, home: m.home_team, away: m.away_team, liga: m.liga },
         });
 
-        let odds_snapshot;
-        try {
-          odds_snapshot = buildOddsSnapshot(repo.db, m.home_team, m.away_team, m.data_partida, app.log);
-        } catch (err) {
-          app.log.warn?.({ err: err.message, match: m.id_confronto }, 'odds_snapshot_failed_skip_match');
-          RUN_PROGRESS.update(runId, { matches_skipped: (RUN_PROGRESS.get(runId)?.matches_skipped ?? 0) + 1 });
-          continue;
-        }
-
         const payload = {
           match: {
             external_id: m.id_confronto,
@@ -290,21 +276,27 @@ export function registerRuns(app, { repo }) {
             away: m.away_team,
             liga: m.liga,
             date: m.data_partida,
+            hora: m.hora_partida,
           },
-          odds_snapshot,
-          options: { include_engines: ['A'] },
+          options: runOptions,
         };
+
+        const predictionRunId = `${runId}__${m.id_confronto}`;
 
         const out = await runPredict({
           repo,
           body: payload,
           log: app.log,
-          run_id: runId,
+          run_id: predictionRunId,
+          oddsResolver,
           onSubPhase: (sp) => RUN_PROGRESS.update(runId, { sub_phase: sp }),
         });
 
         if (!out.__error && out.slots) {
+          motorRuns.push({ run_id: out.run_id, match_id: m.id_confronto, home: m.home_team, away: m.away_team, liga: m.liga });
           for (const s of out.slots) {
+            s.batch_run_id = runId;
+            s.prediction_run_id = out.run_id;
             s.match_id = m.id_confronto;
             s.home = m.home_team;
             s.away = m.away_team;
@@ -318,7 +310,7 @@ export function registerRuns(app, { repo }) {
       }
 
       RUN_PROGRESS.update(runId, { phase: 'persisting', sub_phase: null, current_match: null });
-      RUNS_STORE.set(runId, {
+      savedRun = RUNS_STORE.set(runId, {
         run_id: runId,
         date_start,
         date_end: end,
@@ -334,10 +326,15 @@ export function registerRuns(app, { repo }) {
 
     return {
       run_id: runId,
+      run_seq: savedRun?.run_seq ?? null,
+      run_label: savedRun?.run_label ?? null,
       date_start,
       date_end: end,
       matches: matches.length,
       slots: slots.length,
+        engines: runOptions.include_engines,
+        scout: runOptions.scout,
+        motor_runs: motorRuns,
     };
   });
 
@@ -368,5 +365,52 @@ export function registerRuns(app, { repo }) {
 
   app.delete('/v1/runs', async () => {
     return { deleted_count: RUNS_STORE.clear() };
+  });
+
+  // Lista jogos disponíveis no DB em um intervalo. Usado pela UI para o
+  // seletor de confronto antes de disparar /v1/run.
+  app.get('/v1/matches', async (req, reply) => {
+    const { date_start, date_end } = req.query ?? {};
+    if (!date_start) return reply.code(400).send({ error: 'date_start_required' });
+    const end = date_end || date_start;
+    const matches = repo.getMatchesByDateRange(date_start, end).filter((match) => matchPassesRunFilter(match, req.query ?? {}));
+    return {
+      date_start,
+      date_end: end,
+      count: matches.length,
+      items: matches.map((m) => ({
+        id_confronto: m.id_confronto,
+        liga: m.liga,
+        home: m.home_team,
+        away: m.away_team,
+        data: m.data_partida,
+        hora: m.hora_partida,
+        status: m.status ?? null,
+      })),
+    };
+  });
+
+  // Retorna o response_payload completo de um motor_run individual
+  // (auditoria por confronto). Usado pela página /realflow.
+  app.get('/v1/motor-runs/:id', async (req, reply) => {
+    const { id } = req.params;
+    const row = repo.db
+      .prepare('SELECT run_id, match_id, engine_signature, request_payload, response_payload, created_at FROM motor_run WHERE run_id = ?')
+      .get(id);
+    if (!row) return reply.code(404).send({ error: 'not_found', run_id: id });
+    let request = null;
+    let response = null;
+    let signature = null;
+    try { request = JSON.parse(row.request_payload); } catch { /* ignore */ }
+    try { response = JSON.parse(row.response_payload); } catch { /* ignore */ }
+    try { signature = JSON.parse(row.engine_signature); } catch { /* ignore */ }
+    return {
+      run_id: row.run_id,
+      match_id: row.match_id,
+      created_at: row.created_at,
+      engine_signature: signature,
+      request,
+      response,
+    };
   });
 }

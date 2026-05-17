@@ -28,8 +28,61 @@ function load() {
   return _qg;
 }
 
+const DEFAULT_STRATEGY_ENGINE_GOVERNANCE = Object.freeze({
+  trusted_families: ['gols', 'btts', '1x2', 'dupla'],
+  family_reliability: {
+    gols: 1.00,
+    btts: 1.00,
+    '1x2': 0.85,
+    dupla: 0.82,
+    escanteios: 0.70,
+    cartoes: 0.42,
+    chutes: 0.30,
+    finalizacoes: 0.25,
+    faltas: 0.20,
+  },
+});
+
+const DEFAULT_CURINGA_GOVERNANCE = Object.freeze({
+  consensus_max_pp: 5,
+  divergence_flag_pp: 15,
+  fair_odd_flag_pct: 20,
+  a_only_confidence_factor: 0.85,
+  reliability_boost: 0.10,
+  family_reliability: {
+    engine_a: ['gols', 'escanteios', 'chutes', 'chutes_alvo', 'faltas', 'cartoes', 'impedimentos', 'defesas', 'escanteios_race'],
+    engine_b: ['1x2', 'btts', 'htft', 'dupla', 'cartoes_1x2', 'escanteios_1x2', 'btts_algum_tempo'],
+  },
+});
+
 export function getRaw() {
   return load();
+}
+
+export function getStrategyEngineGovernance() {
+  const shared = load().shared?.strategy_engine ?? {};
+  return {
+    trusted_families: new Set(shared.trusted_families ?? DEFAULT_STRATEGY_ENGINE_GOVERNANCE.trusted_families),
+    family_reliability: {
+      ...DEFAULT_STRATEGY_ENGINE_GOVERNANCE.family_reliability,
+      ...(shared.family_reliability ?? {}),
+    },
+  };
+}
+
+export function getCuringaGovernance() {
+  const shared = load().shared?.curinga ?? {};
+  return {
+    consensus_max_pp: Number(shared.consensus_max_pp ?? DEFAULT_CURINGA_GOVERNANCE.consensus_max_pp),
+    divergence_flag_pp: Number(shared.divergence_flag_pp ?? DEFAULT_CURINGA_GOVERNANCE.divergence_flag_pp),
+    fair_odd_flag_pct: Number(shared.fair_odd_flag_pct ?? DEFAULT_CURINGA_GOVERNANCE.fair_odd_flag_pct),
+    a_only_confidence_factor: Number(shared.a_only_confidence_factor ?? DEFAULT_CURINGA_GOVERNANCE.a_only_confidence_factor),
+    reliability_boost: Number(shared.reliability_boost ?? DEFAULT_CURINGA_GOVERNANCE.reliability_boost),
+    family_reliability: {
+      A: new Set(shared.family_reliability?.engine_a ?? DEFAULT_CURINGA_GOVERNANCE.family_reliability.engine_a),
+      B: new Set(shared.family_reliability?.engine_b ?? DEFAULT_CURINGA_GOVERNANCE.family_reliability.engine_b),
+    },
+  };
 }
 
 /**

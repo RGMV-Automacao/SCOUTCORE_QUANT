@@ -26,6 +26,7 @@
     "job:sync-check": "node apps/jobs/src/sync-check.mjs",
     "job:snapshot-closing": "node apps/jobs/src/snapshot-closing.mjs",
     "mesa:csv": "node scripts/mesa-audit-csv.mjs",
+    "run:audit": "node scripts/run-audit-csv.mjs",
     "test": "node --test packages/*/test/*.test.mjs apps/*/test/*.test.mjs",
     "lint": "eslint . --ext .mjs,.cjs,.js"
   },

@@ -24,7 +24,7 @@ const SLOTS = [
   makeSlot({ match_id: 'm1', market_key: 'esc_ft_over_9_5', family: 'escanteios', direction: 'over', line: 9.5, market_odd: 1.65, edge_pct: 5.0 }),
   makeSlot({ match_id: 'm1', market_key: 'cart_ft_over_3_5', family: 'cartoes', direction: 'over', line: 3.5, market_odd: 1.80, edge_pct: 3.0 }),
   // Contraditório: over 2.5 + under 2.5 mesma família
-  makeSlot({ match_id: 'm1', market_key: 'gols_ft_under_2_5', family: 'gols', direction: 'under', line: 2.5, market_odd: 2.00, edge_pct: 6.0 }),
+  makeSlot({ match_id: 'm1', market_key: 'gols_ft_under_2_5', family: 'gols', direction: 'under', line: 2.5, market_odd: 2.00, edge_pct: 2.0 }),
   makeSlot({ match_id: 'm1', market_key: 'esc_ft_under_8_5', family: 'escanteios', direction: 'under', line: 8.5, market_odd: 1.50, edge_pct: 2.5 }),
 
   // Match 2: apenas 1 leg (impossível fazer dupla)

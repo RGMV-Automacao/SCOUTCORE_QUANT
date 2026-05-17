@@ -38,12 +38,13 @@ const SLOTS = [
   makeSlot({ match_id: 'm1', market_key: 'gols_ft_over_2_5', family: 'gols', direction: 'over', line: 2.5, fair_prob: 0.55, market_odd: 2.10, edge_pct: 5.4, confidence: 0.78 }),
   makeSlot({ match_id: 'm1', market_key: 'btts_ft_sim', family: 'btts', direction: 'sim', line: null, fair_prob: 0.52, market_odd: 1.85, edge_pct: 3.2, confidence: 0.72 }),
   makeSlot({ match_id: 'm1', market_key: 'esc_ft_over_9_5', family: 'escanteios', direction: 'over', line: 9.5, fair_prob: 0.60, market_odd: 1.75, edge_pct: 5.0, confidence: 0.82 }),
-  makeSlot({ match_id: 'm1', market_key: 'resultado_ft_home', family: 'resultado', direction: 'home', line: null, fair_prob: 0.62, market_odd: 1.90, edge_pct: 7.8, confidence: 0.85 }),
+  makeSlot({ match_id: 'm1', market_key: '1x2_total_ft_home', family: '1x2', direction: 'home', line: null, fair_prob: 0.62, market_odd: 1.90, edge_pct: 7.8, confidence: 0.85 }),
   makeSlot({ match_id: 'm1', market_key: 'cartoes_ft_over_3_5', family: 'cartoes', direction: 'over', line: 3.5, fair_prob: 0.58, market_odd: 1.80, edge_pct: 4.4, confidence: 0.70 }),
 
   // Grêmio x Internacional
   makeSlot({ match_id: 'm2', home: 'Grêmio', away: 'Internacional', market_key: 'gols_ft_under_2_5', family: 'gols', direction: 'under', line: 2.5, fair_prob: 0.48, market_odd: 1.95, edge_pct: 2.1, confidence: 0.68 }),
   makeSlot({ match_id: 'm2', home: 'Grêmio', away: 'Internacional', market_key: 'esc_ft_over_10_5', family: 'escanteios', direction: 'over', line: 10.5, fair_prob: 0.45, market_odd: 2.30, edge_pct: 3.5, confidence: 0.65 }),
+  makeSlot({ match_id: 'm2', home: 'Grêmio', away: 'Internacional', market_key: 'dupla_total_ft_1x', family: 'dupla', direction: '1x', line: null, fair_prob: 0.67, market_odd: 1.65, edge_pct: 10.6, confidence: 0.76 }),
   makeSlot({ match_id: 'm2', home: 'Grêmio', away: 'Internacional', market_key: 'resultado_ft_draw', family: 'resultado', direction: 'draw', line: null, fair_prob: 0.30, market_odd: 3.50, edge_pct: 5.0, confidence: 0.60 }),
 
   // Barcelona x Real Madrid
@@ -121,13 +122,15 @@ describe('Strategy Engine E2E', () => {
     }
   });
 
-  it('bingo-resultado: only resultado/1x2/dupla_chance families', async () => {
+  it('bingo-resultado: accepts canonical and legacy resultado aliases', async () => {
     const result = await applyStrategy('bingo-resultado', SLOTS);
     assert.equal(result.strategy_id, 'bingo-resultado');
-    const validFamilies = new Set(['resultado', '1x2', 'dupla_chance']);
+    const validFamilies = new Set(['resultado', '1x2', 'dupla_chance', 'dupla']);
     for (const pick of result.picks) {
       assert.ok(validFamilies.has(pick.family), `unexpected family: ${pick.family}`);
     }
+    assert.ok(result.picks.some((pick) => pick.family === '1x2'));
+    assert.ok(result.picks.some((pick) => pick.family === 'dupla'));
   });
 
   it('bingo-cartoes: only family=cartoes', async () => {

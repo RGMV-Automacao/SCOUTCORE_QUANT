@@ -13,24 +13,21 @@
 //
 // Sanity gates: drop slots com fair_prob fora de [0.02, 0.98].
 
+import { getCuringaGovernance } from '@scoutcore/quality-gates';
+
 const SANITY = { minProb: 0.02, maxProb: 0.98 };
-const CONSENSUS_MAX_PP = 5;
-const DIVERGENCE_FLAG_PP = 15;
-const FAIR_ODD_FLAG_PCT = 20;
+const CURINGA_GOVERNANCE = getCuringaGovernance();
+const CONSENSUS_MAX_PP = CURINGA_GOVERNANCE.consensus_max_pp;
+const DIVERGENCE_FLAG_PP = CURINGA_GOVERNANCE.divergence_flag_pp;
+const FAIR_ODD_FLAG_PCT = CURINGA_GOVERNANCE.fair_odd_flag_pct;
+export const A_ONLY_CONFIDENCE_FACTOR = CURINGA_GOVERNANCE.a_only_confidence_factor;
 
 // D13/D15 family reliability heuristics. Valores conservadores.
 // Engine A (Poisson) é confiável em famílias de contagem (gols, escanteios, chutes,
 // faltas, cartões). Engine B (ML) tende a ir melhor em mercados de label/contexto
-// (1x2, btts, htft, dupla, dnb).
-const FAMILY_RELIABILITY = {
-  A: new Set(['gols','escanteios','chutes','chutes_alvo','faltas','cartoes',
-              'impedimentos','defesas','asian_total','escanteios_asian',
-              'escanteios_race','escanteios_exato']),
-  B: new Set(['1x2','btts','htft','dupla','dnb','correct_score','margem',
-              'marca_primeiro','marca_ultimo','marca','cartoes_1x2',
-              'escanteios_1x2','btts_ambos_tempos','btts_algum_tempo']),
-};
-const RELIABILITY_BOOST = 0.10; // ±10pp shift quando a família é "casa" do engine
+// (1x2, btts, htft, dupla).
+const FAMILY_RELIABILITY = CURINGA_GOVERNANCE.family_reliability;
+const RELIABILITY_BOOST = CURINGA_GOVERNANCE.reliability_boost; // ±10pp shift quando a família é "casa" do engine
 
 /**
  * Calcula peso dinâmico A/B baseado em ewma_brier por (family, liga).
@@ -78,8 +75,13 @@ export function combine({ slotsA, slotsB = null, weightAOverride = null, calibMa
       ...s,
       provenance: {
         ...s.provenance,
+        fair_prob_a: s.fair_prob,
+        fair_odd_a: fairOddFromProb(s.fair_prob),
+        fair_prob_b: null,
+        fair_odd_b: null,
         weight_a: 1,
         weight_b: 0,
+        a_only_confidence_factor: A_ONLY_CONFIDENCE_FACTOR,
         divergence: null,
         divergence_resolved_by: 'engine_b_unavailable',
       },
@@ -110,7 +112,12 @@ export function combine({ slotsA, slotsB = null, weightAOverride = null, calibMa
         ...sa,
         provenance: {
           ...sa.provenance,
+          fair_prob_a: sa.fair_prob,
+          fair_odd_a: fairOddFromProb(sa.fair_prob),
+          fair_prob_b: null,
+          fair_odd_b: null,
           weight_a: 1, weight_b: 0,
+          a_only_confidence_factor: A_ONLY_CONFIDENCE_FACTOR,
           divergence: null,
           divergence_resolved_by: 'engine_b_no_slot',
         },
@@ -134,6 +141,7 @@ export function combine({ slotsA, slotsB = null, weightAOverride = null, calibMa
         weight_a: wA, weight_b: wB,
         weight_source: source,
         fair_prob_a: pA, fair_prob_b: pB,
+        fair_odd_a: fairOddFromProb(pA), fair_odd_b: fairOddFromProb(pB),
         divergence_pp: +divPp.toFixed(2),
         divergence_fair_odd_delta_pct: fairOddDeltaPct,
         divergence_flag: resolution === 'flagged',
@@ -160,6 +168,10 @@ export function combine({ slotsA, slotsB = null, weightAOverride = null, calibMa
       source: 'engine_b_only',
       provenance: {
         ...(sb.provenance ?? {}),
+        fair_prob_a: null,
+        fair_odd_a: null,
+        fair_prob_b: sb.fair_prob,
+        fair_odd_b: fairOddFromProb(sb.fair_prob),
         weight_a: 0, weight_b: 1,
         divergence: null,
         divergence_resolved_by: 'engine_a_no_slot',
@@ -167,6 +179,11 @@ export function combine({ slotsA, slotsB = null, weightAOverride = null, calibMa
     });
   }
   return merged;
+}
+
+function fairOddFromProb(prob) {
+  if (!Number.isFinite(prob) || prob <= 0) return null;
+  return +(1 / prob).toFixed(4);
 }
 
 function fairOddDelta(pA, pB) {

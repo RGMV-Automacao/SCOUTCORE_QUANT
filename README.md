@@ -64,6 +64,22 @@ npm run setup:replay        # replay historico (~10 dias)
 npm run dev:api
 ```
 
+## Auditoria real por confronto
+
+Para simular o fluxo de cliente, use `/v1/run`: o sistema parte do confronto, roda Motor A + Motor B, combina no Curinga, resolve odds reais da tabela `odds` por `market_key`, aplica IA/SCOUT e persiste `motor_run`.
+
+```bash
+# 1. Rodar o confronto pelo fluxo real
+curl -X POST http://127.0.0.1:4040/v1/run \
+	-H "content-type: application/json" \
+	-d '{"date_start":"2026-05-15","date_end":"2026-05-15","match_id":"52q6oshpwx91dnjt9x0cx1iqc","run_id":"avl-liv-cert02","options":{"include_engines":["A","B"],"scout":true,"min_edge_pp":0,"feature_set":"v3"}}'
+
+# 2. Exportar CSVs a partir do motor_run persistido
+npm run run:audit -- --run-id=run-2026-05-15-to-2026-05-15-avl-liv-cert02 --match-id=52q6oshpwx91dnjt9x0cx1iqc --out=audit/realflow-2026-05-15-aston-villa-liverpool
+```
+
+`scripts/mesa-audit-csv.mjs` continua existindo para mesas com odds fornecidas em JSON, mas não representa a certificação de fluxo real quando o objetivo é validar o produto para cliente.
+
 ## Stack
 
 - **Runtime:** Node 22 ESM + Fastify + better-sqlite3

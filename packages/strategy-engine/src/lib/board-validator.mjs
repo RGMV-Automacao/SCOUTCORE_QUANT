@@ -73,6 +73,134 @@ function validateExposure(combos, gates) {
   return { pass: issues.length === 0, issues, leagueCounts };
 }
 
+function comboLeague(combo) {
+  return combo?.legs?.[0]?.liga ?? combo?.league ?? 'unknown';
+}
+
+function comboRank(combo) {
+  const quality = Number(combo?.quality_score ?? 0);
+  const jointProb = Number(combo?.joint_prob ?? 0);
+  const odd = Number(combo?.combo_odd ?? 0);
+  const comboEv = jointProb > 0 && odd > 0 ? (jointProb * odd) - 1 : 0;
+  return quality + comboEv;
+}
+
+function sortForBoard(combos) {
+  return [...(combos ?? [])].sort((a, b) => {
+    const rankDiff = comboRank(b) - comboRank(a);
+    if (rankDiff !== 0) return rankDiff;
+    return Number(b?.combo_odd ?? 0) - Number(a?.combo_odd ?? 0);
+  });
+}
+
+function selectForN(candidates, n, gates, diversityBoost = false) {
+  const pool = sortForBoard(candidates);
+  const selected = [];
+  const used = new Set();
+  const leagueCounts = {};
+  const familyCounts = {};
+  let teamOrHTCount = 0;
+
+  while (selected.length < n) {
+    let bestIdx = -1;
+    let bestScore = -Infinity;
+
+    for (let i = 0; i < pool.length; i++) {
+      if (used.has(i)) continue;
+      const combo = pool[i];
+      const league = comboLeague(combo);
+      if ((leagueCounts[league] ?? 0) >= gates.maxPerLeague) continue;
+
+      let score = comboRank(combo);
+      if (diversityBoost) {
+        const newFamilies = (combo.legs ?? []).filter((leg) => (familyCounts[leg.family] ?? 0) === 0).length;
+        const hasTeamOrHT = (combo.legs ?? []).some(isTeamOrHTLeg);
+        score += newFamilies * 0.35;
+        if (teamOrHTCount < gates.minTeamOrHT && hasTeamOrHT) score += 0.75;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestIdx = i;
+      }
+    }
+
+    if (bestIdx < 0) break;
+    const picked = pool[bestIdx];
+    used.add(bestIdx);
+    selected.push(picked);
+
+    const league = comboLeague(picked);
+    leagueCounts[league] = (leagueCounts[league] ?? 0) + 1;
+    for (const leg of (picked.legs ?? [])) {
+      familyCounts[leg.family] = (familyCounts[leg.family] ?? 0) + 1;
+      if (isTeamOrHTLeg(leg)) teamOrHTCount++;
+    }
+  }
+
+  return selected;
+}
+
+function selectBoardCombos(approved, gates) {
+  const supported = Array.isArray(gates.supportedN) && gates.supportedN.length > 0
+    ? gates.supportedN
+    : [gates.minConfrontos];
+  const targets = [...supported]
+    .filter((n) => Number.isFinite(n) && n <= approved.length)
+    .sort((a, b) => b - a);
+
+  if (targets.length === 0) {
+    return {
+      selected: sortForBoard(approved),
+      target_n: null,
+      diversity: validateDiversity(approved, gates),
+      exposure: validateExposure(approved, gates),
+      status: 'insufficient',
+    };
+  }
+
+  let best = null;
+  for (const target of targets) {
+    for (const diversityBoost of [false, true]) {
+      const selected = selectForN(approved, target, gates, diversityBoost);
+      const diversity = validateDiversity(selected, gates);
+      const exposure = validateExposure(selected, gates);
+      const candidate = { selected, target_n: target, diversity, exposure, status: 'ok' };
+      if (!best || selected.length > best.selected.length) best = candidate;
+
+      if (selected.length === target && diversity.pass && exposure.pass) {
+        return candidate;
+      }
+    }
+
+    const fallbackSelected = sortForBoard(approved).slice(0, target);
+    const fallbackCandidate = {
+      selected: fallbackSelected,
+      target_n: target,
+      diversity: validateDiversity(fallbackSelected, gates),
+      exposure: validateExposure(fallbackSelected, gates),
+      status: 'ok',
+    };
+    if (!best || fallbackSelected.length > best.selected.length) best = fallbackCandidate;
+  }
+
+  if (!best) {
+    const selected = sortForBoard(approved).slice(0, gates.minConfrontos);
+    return {
+      selected,
+      target_n: gates.minConfrontos,
+      diversity: validateDiversity(selected, gates),
+      exposure: validateExposure(selected, gates),
+      status: 'insufficient',
+    };
+  }
+
+  if (best.selected.length < best.target_n) best.status = 'insufficient';
+  else if (!best.diversity.pass) best.status = 'diversity_fail';
+  else if (!best.exposure.pass) best.status = 'exposure_fail';
+  return best;
+}
+
 export function validateConfronto(combo, gates) {
   const reasons = [];
 
@@ -98,7 +226,7 @@ export function validateConfronto(combo, gates) {
   }
 
   const distinctFamilies = new Set(legs.map((l) => l.family)).size;
-  if (legs.length >= 3 && distinctFamilies < 2) {
+  if (distinctFamilies !== legs.length) {
     reasons.push(`famílias repetidas: ${distinctFamilies} distintas para ${legs.length} legs`);
   }
 
@@ -134,33 +262,39 @@ export function validateConfronto(combo, gates) {
 }
 
 export function validateBoard(combos, gates) {
-  const ready_combos = [];
+  const approved_combos = [];
   const rejected = [];
 
   for (const combo of (combos ?? [])) {
     const v = validateConfronto(combo, gates);
     if (v.status === 'approved') {
-      ready_combos.push(combo);
+      approved_combos.push(combo);
     } else {
       rejected.push({ match_id: combo?.match_id ?? combo?.opta_match_id ?? null, reasons: v.reasons });
     }
   }
 
-  const warnings = [];
-  let status = 'ok';
+  const selection = selectBoardCombos(approved_combos, gates);
+  const ready_combos = selection.selected;
 
-  if (ready_combos.length < gates.minConfrontos) {
+  const warnings = [];
+  let status = selection.status;
+
+  if (approved_combos.length < gates.minConfrontos) {
     status = 'insufficient';
-    warnings.push(`apenas ${ready_combos.length} confrontos ready (mínimo ${gates.minConfrontos})`);
+    warnings.push(`apenas ${approved_combos.length} confrontos aprovados (mínimo ${gates.minConfrontos})`);
+  } else if (selection.target_n != null && ready_combos.length < selection.target_n) {
+    status = 'insufficient';
+    warnings.push(`board selecionou ${ready_combos.length}/${selection.target_n} confrontos respeitando exposição`);
   }
 
-  const diversity = validateDiversity(ready_combos, gates);
+  const diversity = selection.diversity;
   if (!diversity.pass) {
     if (status === 'ok') status = 'diversity_fail';
     warnings.push(...diversity.issues);
   }
 
-  const exposure = validateExposure(ready_combos, gates);
+  const exposure = selection.exposure;
   if (!exposure.pass) {
     if (status === 'ok') status = 'exposure_fail';
     warnings.push(...exposure.issues);
@@ -173,8 +307,10 @@ export function validateBoard(combos, gates) {
     warnings,
     stats: {
       total_input: combos?.length ?? 0,
+      approved_count: approved_combos.length,
       ready_count: ready_combos.length,
       rejected_count: rejected.length,
+      target_n: selection.target_n,
       family_counts: diversity.familyCounts,
       team_or_ht_legs: diversity.teamOrHTCount,
       total_legs: diversity.totalLegs,

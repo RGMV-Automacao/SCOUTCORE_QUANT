@@ -1,5 +1,5 @@
-// SCOUTCORE_QUANT — Setup script: apaga tabelas de motor antigo do scout.db
-// Decisão "tudo novo": motor não herda calibração nem predições do legado.
+// SCOUTCORE_QUANT — Setup script: apaga o estado persistido do motor no scout.db.
+// Decisão "tudo novo": motor não herda calibração, predições, runs nem tickets.
 // Mantém apenas dados crus (partidas, team_profiles, eventos_faixa, odds, odds_historico).
 
 import 'dotenv/config';
@@ -17,7 +17,7 @@ const db = new Database(DST);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = OFF');
 
-// Tabelas a apagar (estado de motor antigo / Apollo)
+// Tabelas a apagar (estado persistido do motor, legado e runtime atual)
 const TABLES_TO_WIPE = [
   'predictions',
   'ml_predictions',
@@ -27,9 +27,12 @@ const TABLES_TO_WIPE = [
   'motor_yankee_tickets',
   'banca_apostas',
   'tips',
+  'runs',
+  'run_slots',
+  'yankee_submissions',
 ];
 
-console.log('[wipe] Iniciando wipe de tabelas de motor antigo...');
+console.log('[wipe] Iniciando wipe de estado persistido do motor...');
 const tx = db.transaction(() => {
   for (const t of TABLES_TO_WIPE) {
     try {

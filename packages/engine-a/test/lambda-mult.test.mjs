@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { predict } from '../src/engine.mjs';
+import { MARKETS } from '../../markets/src/registry.mjs';
 
 const baseCtx = {
   home: 'A', away: 'B', liga: 'BRA1',
@@ -58,12 +59,12 @@ test('sem calibration: lambda_mult=1.0 (no-op)', () => {
   assert.equal(slot.provenance.lambda_mult, 1.0);
 });
 
-test('Engine A emite todo o catalogo canonico de 576 mercados', () => {
+test('Engine A emite todo o catalogo canonico ativo do Scout', () => {
   const out = predict(baseCtx);
-  assert.equal(out.slots.length, 576);
+  assert.equal(out.slots.length, MARKETS.length);
   assert.ok(findSlot(out.slots, 'gols_home_ht_over_0_5'));
   assert.ok(findSlot(out.slots, 'gols_away_ht_under_1_5'));
-  assert.ok(findSlot(out.slots, 'escanteios_asian_total_ft_over_9_25'));
+  assert.ok(findSlot(out.slots, 'dupla_total_ft_1x'));
 });
 
 test('lambda_mult Under: Over diminui ⇒ Under aumenta (complementar)', () => {
@@ -78,4 +79,14 @@ test('lambda_mult Under: Over diminui ⇒ Under aumenta (complementar)', () => {
   assert.ok(redOver.fair_prob < baseOver.fair_prob, 'Over com lm<1 deve cair');
   assert.ok(redUnder.fair_prob > baseUnder.fair_prob, 'Under deve subir');
   assert.ok(Math.abs((redOver.fair_prob + redUnder.fair_prob) - 1) < 1e-6, 'soma=1');
+});
+
+test('predict falha explicitamente quando profile interno é inválido', () => {
+  assert.throws(
+    () => predict({
+      ...baseCtx,
+      profileHome: { ...baseCtx.profileHome, avg_gols_marcados: 'bad' },
+    }),
+    /engine_a_invalid_context:profileHome.avg_gols_marcados/,
+  );
 });

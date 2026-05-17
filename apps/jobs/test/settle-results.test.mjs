@@ -15,7 +15,8 @@ function makeDb() {
       home_goals_ht INTEGER,
       away_goals_ht INTEGER,
       liga TEXT,
-      temporada TEXT
+      temporada TEXT,
+      processado INTEGER NOT NULL DEFAULT 1
     );
     CREATE TABLE eventos_faixa (
       id_confronto TEXT,
@@ -29,6 +30,12 @@ function makeDb() {
       cartoes_vermelhos INTEGER,
       gols INTEGER,
       impedimentos INTEGER
+    );
+    CREATE TABLE times (
+      id_confronto TEXT,
+      time TEXT,
+      modo TEXT,
+      defesas INTEGER
     );
     CREATE TABLE prediction (
       run_id TEXT NOT NULL,
@@ -47,10 +54,11 @@ function makeDb() {
       confidence REAL NOT NULL,
       certified INTEGER NOT NULL DEFAULT 0,
       result TEXT,
+      actual_value REAL,
       settled_at TEXT,
       provenance TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      PRIMARY KEY (run_id, market_key)
+      PRIMARY KEY (run_id, match_id, market_key)
     );
     CREATE TABLE calib_state (
       engine TEXT NOT NULL,
@@ -95,7 +103,7 @@ function makeDb() {
 
 test('settle persists closing odds and positive CLV when open beats close', () => {
   const db = makeDb();
-  db.prepare(`INSERT INTO partidas VALUES ('m1','Home','Away',2,0,1,0,'brasileirao','2026')`).run();
+  db.prepare(`INSERT INTO partidas VALUES ('m1','Home','Away',2,0,1,0,'brasileirao','2026',1)`).run();
   db.prepare(`
     INSERT INTO prediction
       (run_id, match_id, match_date, liga, family, scope, period, direction, line,
@@ -118,7 +126,7 @@ test('settle persists closing odds and positive CLV when open beats close', () =
 
 test('settle rejects implausible closing odds without losing hit/miss settlement', () => {
   const db = makeDb();
-  db.prepare(`INSERT INTO partidas VALUES ('m1','Home','Away',2,0,1,0,'brasileirao','2026')`).run();
+  db.prepare(`INSERT INTO partidas VALUES ('m1','Home','Away',2,0,1,0,'brasileirao','2026',1)`).run();
   db.prepare(`
     INSERT INTO prediction
       (run_id, match_id, match_date, liga, family, scope, period, direction, line,

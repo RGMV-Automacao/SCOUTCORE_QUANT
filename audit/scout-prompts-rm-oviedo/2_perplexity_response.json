@@ -1,0 +1,133 @@
+{
+  "latency_ms": 5593,
+  "model": "sonar-pro",
+  "usage": {
+    "prompt_tokens": 1233,
+    "completion_tokens": 709,
+    "total_tokens": 1942,
+    "search_context_size": "low",
+    "cost": {
+      "input_tokens_cost": 0.0037,
+      "output_tokens_cost": 0.01064,
+      "request_cost": 0.006,
+      "total_cost": 0.02033
+    }
+  },
+  "citations": [
+    "https://www.espn.com.ar/futbol/partido/_/juegoId/748503/real-oviedo-real-madrid",
+    "https://tn.com.ar/deportes/futbol/2026/05/14/real-madrid-vs-real-oviedo-en-vivo-por-la-fecha-36-de-la-liga-de-espana-hora-donde-ver-y-formaciones/",
+    "https://www.marcadoresonline.com/futbol/14-05-2026/realmadrid-oviedo",
+    "https://www.espn.cl/futbol/partido/_/juegoId/748503/real-oviedo-real-madrid",
+    "https://libero.pe/futbol-internacional/liga-espanola/2026/05/14/real-madrid-vs-real-oviedo-en-vivo-en-directo-via-directv-dsports-movistar-plus-partido-de-laliga-2026-video-vilb-925456",
+    "https://www.flashscore.es/partido/futbol/real-madrid-W8mj7MDD/real-oviedo-SzYzw34K/",
+    "https://www.elconfidencial.com/deportes/2026-05-14/real-madrid-oviedo-laliga-ea-sports-directo_4355632/",
+    "https://www.flashscore.co/partido/futbol/real-madrid-W8mj7MDD/real-oviedo-SzYzw34K/clasificacion/tabla-en-vivo/?mid=r95TigCr"
+  ],
+  "content": "1. CLÁSSICO/RIVALIDADE — Não é derby local; é confronto interestadual sem rivalidade histórica forte, embora o jogo no Bernabéu eleve a pressão sobre o visitante; impacto moderado em intensidade/faltas. Certeza: estático/conhecimento geral; CONFIANÇA: alta\n2. STAKES — Sem informação pré-jogo confiável aqui sobre a tabela completa no momento exato, mas na rodada 36 o Real Madrid aparecia 2º com 77 pts e o Oviedo na parte baixa com 29 pts; impacto: mandante sob pressão por título/vaga, visitante sob risco baixo de rotação defensiva. Fonte curta: ESPN/marcadoresonline (classificação exibida); CONFIANÇA: média\n3. DESFALQUES CONFIRMADOS — Sem informação confiável de lesões/suspensões confirmadas no material fornecido; não há prova oficial suficiente para cravar goleiro titular, artilheiro ou armador fora. Certeza: sem informação; CONFIANÇA: baixa\n4. ESCALAÇÃO / NOVIDADES — Sem informação pré-jogo verificável sobre retornos, rotação ou pista clara do técnico; as fontes encontradas foram majoritariamente pós-jogo/conflitantes para esse quesito. Certeza: sem informação; CONFIANÇA: baixa\n5. PRÓXIMO COMPROMISSO — Sem informação confiável e específica dos próximos jogos de Real Madrid e Real Oviedo dentro de ≤4 dias no material fornecido; por isso não dá para inferir rotação com segurança. Certeza: sem informação; CONFIANÇA: baixa\n6. CLIMA EMOCIONAL / TROCA DE TÉCNICO — Sem informação sobre troca de técnico nas últimas 4 semanas ou crise interna antes do jogo; não encontrei fonte dinâmica confiável para sustentar esse ponto. Certeza: sem informação; CONFIANÇA: baixa\n7. FATORES LOGÍSTICOS — a) Distância Madrid↔Oviedo: curta-média, aprox. 450 km por estrada/linha aérea curta; b) cansaço do Oviedo: sem informação do último jogo pré-14/05/2026; c) tripla rodada: sem informação; d) clima: sem informação confiável de previsão para 14/05/2026; e) altitude: Santiago Bernabéu está bem abaixo de 700 m, então não há efeito de altitude. Certeza: estático/sem informação dinâmica; CONFIANÇA: média\n8. ESTATÍSTICA MARCANTE — Sem informação pré-jogo confiável de sequência relevante específica; as páginas encontradas trazem principalmente o resultado final, então não uso para afirmar tendência anterior sem validação. Certeza: sem informação; CONFIANÇA: baixa",
+  "raw_response": {
+    "id": "ef27808d-179e-4719-8f54-c8e44a94cd03",
+    "model": "sonar-pro",
+    "created": 1778812341,
+    "usage": {
+      "prompt_tokens": 1233,
+      "completion_tokens": 709,
+      "total_tokens": 1942,
+      "search_context_size": "low",
+      "cost": {
+        "input_tokens_cost": 0.0037,
+        "output_tokens_cost": 0.01064,
+        "request_cost": 0.006,
+        "total_cost": 0.02033
+      }
+    },
+    "citations": [
+      "https://www.espn.com.ar/futbol/partido/_/juegoId/748503/real-oviedo-real-madrid",
+      "https://tn.com.ar/deportes/futbol/2026/05/14/real-madrid-vs-real-oviedo-en-vivo-por-la-fecha-36-de-la-liga-de-espana-hora-donde-ver-y-formaciones/",
+      "https://www.marcadoresonline.com/futbol/14-05-2026/realmadrid-oviedo",
+      "https://www.espn.cl/futbol/partido/_/juegoId/748503/real-oviedo-real-madrid",
+      "https://libero.pe/futbol-internacional/liga-espanola/2026/05/14/real-madrid-vs-real-oviedo-en-vivo-en-directo-via-directv-dsports-movistar-plus-partido-de-laliga-2026-video-vilb-925456",
+      "https://www.flashscore.es/partido/futbol/real-madrid-W8mj7MDD/real-oviedo-SzYzw34K/",
+      "https://www.elconfidencial.com/deportes/2026-05-14/real-madrid-oviedo-laliga-ea-sports-directo_4355632/",
+      "https://www.flashscore.co/partido/futbol/real-madrid-W8mj7MDD/real-oviedo-SzYzw34K/clasificacion/tabla-en-vivo/?mid=r95TigCr"
+    ],
+    "search_results": [
+      {
+        "title": "Real Madrid 2-0 Real Oviedo (14 de May., 2026) Resultado Final",
+        "url": "https://www.espn.com.ar/futbol/partido/_/juegoId/748503/real-oviedo-real-madrid",
+        "date": "2026-05-14",
+        "last_updated": "2026-05-14",
+        "snippet": "Real Madrid derrota al Oviedo en una noche de silbidos y frustración en el Bernabéu · Escandell salva al Oviedo con una gran intervención · Gonzalo anota el 1-0 ...",
+        "source": "web"
+      },
+      {
+        "title": "Real Madrid le ganó a Real Oviedo 2 a 0 por la fecha 36 de La Liga ...",
+        "url": "https://tn.com.ar/deportes/futbol/2026/05/14/real-madrid-vs-real-oviedo-en-vivo-por-la-fecha-36-de-la-liga-de-espana-hora-donde-ver-y-formaciones/",
+        "date": "2026-05-14",
+        "last_updated": "2026-05-14",
+        "snippet": "Real Madrid venció a Real Oviedo 2-0 en la fecha 36 de La Liga de España. Los goles fueron anotados por Gonzalo García (43' PT) y Jude ...",
+        "source": "web"
+      },
+      {
+        "title": "Resultados Real Madrid Oviedo Primera Division Jornada 36 14-05 ...",
+        "url": "https://www.marcadoresonline.com/futbol/14-05-2026/realmadrid-oviedo",
+        "date": "2026-05-14",
+        "last_updated": "2026-05-14",
+        "snippet": "Real Madrid. Finalizado. Oviedo · 2. 0 · Fecha: 14.05.2026 Hora: 21:30 Estadio: Estadio Bernabeu Aforo:62774 personas Árbitro: De Burgos.",
+        "source": "web"
+      },
+      {
+        "title": "Real Madrid 2-0 Real Oviedo (14 de May., 2026) Resultado Final",
+        "url": "https://www.espn.cl/futbol/partido/_/juegoId/748503/real-oviedo-real-madrid",
+        "date": "2025-09-04",
+        "last_updated": "2025-09-04",
+        "snippet": "Real Madrid derrota al Oviedo en una noche de silbidos y frustración en el Bernabéu · Escandell salva al Oviedo con una gran intervención · Gonzalo anota el 1-0 ...",
+        "source": "web"
+      },
+      {
+        "title": "Real Madrid venció 2-0 a Real Oviedo en un partido por ... - Libero",
+        "url": "https://libero.pe/futbol-internacional/liga-espanola/2026/05/14/real-madrid-vs-real-oviedo-en-vivo-en-directo-via-directv-dsports-movistar-plus-partido-de-laliga-2026-video-vilb-925456",
+        "date": "2026-05-14",
+        "last_updated": "2026-05-14",
+        "snippet": "Ya sin chances matemáticas de ganarl el título, Real Madrid se impuso 2-0 a Real Oviedo en el Bernabéu. Los goles fueron de Gonzalo García y ...",
+        "source": "web"
+      },
+      {
+        "title": "Real Madrid vs Real Oviedo 14/05/2026 | Fútbol - Flashscore.es",
+        "url": "https://www.flashscore.es/partido/futbol/real-madrid-W8mj7MDD/real-oviedo-SzYzw34K/",
+        "date": "2026-01-01",
+        "last_updated": "2026-01-02",
+        "snippet": "Sigue el Real Madrid v Real Oviedo 14/05/2026 historial de enfrentamientos (H2H), últimas noticias, resultados y más información en Flashscore.",
+        "source": "web"
+      },
+      {
+        "title": "Real Madrid vs Oviedo, hoy: resultado, goles y última hora del ...",
+        "url": "https://www.elconfidencial.com/deportes/2026-05-14/real-madrid-oviedo-laliga-ea-sports-directo_4355632/",
+        "date": "2026-05-14",
+        "snippet": "El Real Madrid ganó por 2-1 el partido de la primera vuelta frente al Oviedo en un encuentro que dejó bastante tensión alrededor de Vinícius ...",
+        "source": "web"
+      },
+      {
+        "title": "Real Madrid vs Real Oviedo 14/05/2026 | Fútbol - Flashscore",
+        "url": "https://www.flashscore.co/partido/futbol/real-madrid-W8mj7MDD/real-oviedo-SzYzw34K/clasificacion/tabla-en-vivo/?mid=r95TigCr",
+        "date": "2026-05-14",
+        "snippet": "Sigue el Real Madrid v Real Oviedo 14/05/2026 historial de enfrentamientos (H2H), últimas noticias, resultados y más información en ...",
+        "source": "web"
+      }
+    ],
+    "object": "chat.completion",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "1. CLÁSSICO/RIVALIDADE — Não é derby local; é confronto interestadual sem rivalidade histórica forte, embora o jogo no Bernabéu eleve a pressão sobre o visitante; impacto moderado em intensidade/faltas. Certeza: estático/conhecimento geral; CONFIANÇA: alta\n2. STAKES — Sem informação pré-jogo confiável aqui sobre a tabela completa no momento exato, mas na rodada 36 o Real Madrid aparecia 2º com 77 pts e o Oviedo na parte baixa com 29 pts; impacto: mandante sob pressão por título/vaga, visitante sob risco baixo de rotação defensiva. Fonte curta: ESPN/marcadoresonline (classificação exibida); CONFIANÇA: média\n3. DESFALQUES CONFIRMADOS — Sem informação confiável de lesões/suspensões confirmadas no material fornecido; não há prova oficial suficiente para cravar goleiro titular, artilheiro ou armador fora. Certeza: sem informação; CONFIANÇA: baixa\n4. ESCALAÇÃO / NOVIDADES — Sem informação pré-jogo verificável sobre retornos, rotação ou pista clara do técnico; as fontes encontradas foram majoritariamente pós-jogo/conflitantes para esse quesito. Certeza: sem informação; CONFIANÇA: baixa\n5. PRÓXIMO COMPROMISSO — Sem informação confiável e específica dos próximos jogos de Real Madrid e Real Oviedo dentro de ≤4 dias no material fornecido; por isso não dá para inferir rotação com segurança. Certeza: sem informação; CONFIANÇA: baixa\n6. CLIMA EMOCIONAL / TROCA DE TÉCNICO — Sem informação sobre troca de técnico nas últimas 4 semanas ou crise interna antes do jogo; não encontrei fonte dinâmica confiável para sustentar esse ponto. Certeza: sem informação; CONFIANÇA: baixa\n7. FATORES LOGÍSTICOS — a) Distância Madrid↔Oviedo: curta-média, aprox. 450 km por estrada/linha aérea curta; b) cansaço do Oviedo: sem informação do último jogo pré-14/05/2026; c) tripla rodada: sem informação; d) clima: sem informação confiável de previsão para 14/05/2026; e) altitude: Santiago Bernabéu está bem abaixo de 700 m, então não há efeito de altitude. Certeza: estático/sem informação dinâmica; CONFIANÇA: média\n8. ESTATÍSTICA MARCANTE — Sem informação pré-jogo confiável de sequência relevante específica; as páginas encontradas trazem principalmente o resultado final, então não uso para afirmar tendência anterior sem validação. Certeza: sem informação; CONFIANÇA: baixa"
+        },
+        "delta": {
+          "role": "assistant",
+          "content": ""
+        },
+        "finish_reason": "stop"
+      }
+    ]
+  }
+}

@@ -8,6 +8,8 @@
 //   - NUNCA lança. Falha de rede / timeout / parse → { available:false, reason }.
 //   - Honesto: se sidecar offline, fallback degrada Motor para Engine A puro.
 
+import { canonicalizeMarketKey } from '@scoutcore/markets';
+
 export const ENGINE_B_VERSION = process.env.ENGINE_B_VERSION || '0.3.0-xgb-lgbm';
 
 const URL_BASE = process.env.ENGINE_B_URL || 'http://127.0.0.1:4055';
@@ -63,8 +65,8 @@ export async function predictBatch({ liga, home, away, data, features } = {}) {
     };
   }
   const slots = (r.slots || []).map((s) => ({
-    ...parseMarketKey(canonicalMarketKey(s.market_key)),
-    market_key: canonicalMarketKey(s.market_key),
+    ...parseMarketKey(canonicalizeMarketKey(s.market_key)),
+    market_key: canonicalizeMarketKey(s.market_key),
     fair_prob: s.fair_prob,
     source: 'engine_b',
     certified: true,
@@ -75,15 +77,6 @@ export async function predictBatch({ liga, home, away, data, features } = {}) {
     slots,
     version: r.version || ENGINE_B_VERSION,
   };
-}
-
-export function canonicalMarketKey(key) {
-  if (key === 'btts_sim') return 'btts_total_ft_sim';
-  if (key === 'btts_nao') return 'btts_total_ft_nao';
-  if (key === '1x2_home') return '1x2_total_ft_home';
-  if (key === '1x2_draw') return '1x2_total_ft_draw';
-  if (key === '1x2_away') return '1x2_total_ft_away';
-  return key;
 }
 
 function parseMarketKey(key) {

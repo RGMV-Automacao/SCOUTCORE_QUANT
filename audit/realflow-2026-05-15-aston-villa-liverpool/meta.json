@@ -1,0 +1,23 @@
+{
+  "source": "motor_run.response_payload",
+  "batch_run_id": "run-2026-05-15-to-2026-05-15-avl-liv-cert02",
+  "prediction_run_id": null,
+  "match_id": "52q6oshpwx91dnjt9x0cx1iqc",
+  "db": "C:\\Users\\Rogerio\\Desktop\\RGMV_PROJETOS\\SCOUTCORE_QUANT\\data\\scout.db",
+  "responses_count": 1,
+  "slots_count": 530,
+  "ranked_count": 22,
+  "prediction_run_ids": [
+    "run-2026-05-15-to-2026-05-15-avl-liv-cert02__52q6oshpwx91dnjt9x0cx1iqc"
+  ],
+  "files": [
+    "request.json",
+    "response.json",
+    "mesa_summary.csv",
+    "mesa_ranked.csv",
+    "mesa_slots.csv",
+    "audit_unified.csv",
+    "raw/*.json"
+  ],
+  "generated_at": "2026-05-15T03:20:08.136Z"
+}

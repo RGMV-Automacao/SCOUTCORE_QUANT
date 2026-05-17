@@ -4,13 +4,15 @@
 import { randomUUID } from 'node:crypto';
 import { PredictRequestZ, PredictionResponseZ, safeParse } from '@scoutcore/contracts';
 import { predict as predictA, coveredFamilies } from '@scoutcore/engine-a';
-import { combine } from '@scoutcore/curinga';
+import { combine, A_ONLY_CONFIDENCE_FACTOR } from '@scoutcore/curinga';
 import { buildEvidence, buildMatchEvidenceContext } from '@scoutcore/evidence';
 import * as engineB from '@scoutcore/engine-b-bridge';
+import { normalizeMarketSnapshot } from '@scoutcore/markets';
 import * as QG from '@scoutcore/quality-gates';
 import { loadCalibrationMap, getCalib, applyCalibrationToSlot } from '@scoutcore/calibration';
 import { loadIsotonicMap, getIsotonic, applyIsotonicToSlot } from '@scoutcore/isotonic';
 import { runScout, applyScoutOverlay } from '@scoutcore/scout';
+import { buildDbOddsResolver } from './odds-resolver.mjs';
 import { buildSignature } from './engine-signature.mjs';
 
 // Ligas com calendário europeu (temporada Y/Y+1, começa em agosto).
@@ -41,7 +43,7 @@ export function registerPredict(app, { repo }) {
  * Núcleo do predict, isolado para reuso (batch, jobs, replay).
  * Retorna o response normal OU `{ __error: true, __status, __body }` em erro.
  */
-export async function runPredict({ repo, body, log = console, persist = true, run_id: callerRunId, onSubPhase }) {
+export async function runPredict({ repo, body, log = console, persist = true, run_id: callerRunId, onSubPhase, oddsResolver = null }) {
     const t0 = Date.now();
     const emit = (phase) => { try { onSubPhase?.(phase); } catch { /* observador opcional, nunca quebra */ } };
     const parsed = safeParse(PredictRequestZ, body);
@@ -53,7 +55,21 @@ export async function runPredict({ repo, body, log = console, persist = true, ru
     const temporada = inferTemporada(m.date, m.liga);
     const asOf = m.date;
     const warnings = [];
-    const odds = normalizeOddsSnapshot(r.odds_snapshot ?? {}, r.market_alias_map ?? {}, warnings);
+    let odds = normalizeMarketSnapshot(r.odds_snapshot ?? {}, r.market_alias_map ?? {}, warnings);
+    const effectiveOddsResolver = typeof oddsResolver === 'function'
+      ? oddsResolver
+      : (r.options.resolve_odds === true && repo?.db ? buildDbOddsResolver(repo.db) : null);
+    const oddsProvenance = Object.fromEntries(
+      Object.keys(odds).map((marketKey) => [marketKey, { source: 'request', found: true }]),
+    );
+    const oddsDiagnostics = {
+      request_count: Object.keys(odds).length,
+      resolver_used: false,
+      resolver_found: 0,
+      resolver_absent: 0,
+      absent_reasons: {},
+      slots_with_odds: 0,
+    };
     const suppressedMarkets = new Set(r.options.suppress_markets ?? []);
 
     // 1. Lookups (sem inventar fallback silencioso).
@@ -97,7 +113,8 @@ export async function runPredict({ repo, body, log = console, persist = true, ru
           calibration: engineCalib,
         });
       } catch (e) {
-        warnings.push(`engine_a_aborted:${e.message}`);
+        const reason = e?.message ?? 'unknown_error';
+        warnings.push(reason.startsWith('engine_a_invalid_context') ? reason : `engine_a_aborted:${reason}`);
         aOut = { slots: [] };
       }
     } else {
@@ -131,6 +148,29 @@ export async function runPredict({ repo, body, log = console, persist = true, ru
     });
     const tCms = Date.now() - tC;
 
+    if (typeof effectiveOddsResolver === 'function') {
+      emit('odds');
+      try {
+        const resolved = await effectiveOddsResolver({ repo, match: m, slots: combined, existingOdds: odds, log });
+        oddsDiagnostics.resolver_used = true;
+        for (const warning of resolved?.warnings ?? []) warnings.push(warning);
+        for (const [marketKey, odd] of Object.entries(resolved?.odds ?? {})) {
+          if (odds[marketKey] == null || resolved?.override === true) odds[marketKey] = odd;
+          oddsProvenance[marketKey] = { ...(resolved?.provenance?.[marketKey] ?? {}), source: resolved?.source ?? 'resolver', found: true };
+        }
+        for (const [marketKey, reason] of Object.entries(resolved?.absent ?? {})) {
+          if (oddsProvenance[marketKey]) continue;
+          const normalizedReason = String(reason || 'missing');
+          oddsProvenance[marketKey] = { source: resolved?.source ?? 'resolver', found: false, reason: normalizedReason };
+          oddsDiagnostics.absent_reasons[normalizedReason] = (oddsDiagnostics.absent_reasons[normalizedReason] ?? 0) + 1;
+        }
+        oddsDiagnostics.resolver_found = Object.keys(resolved?.odds ?? {}).length;
+        oddsDiagnostics.resolver_absent = Object.keys(resolved?.absent ?? {}).length;
+      } catch (error) {
+        warnings.push(`odds_resolver_failed:${error.message ?? String(error)}`);
+      }
+    }
+
     // 5. Evidence + odds annotation + Quality-Gates + Isotonic + Calibration EWMA
     emit('evidence_gates');
     const qgGates = QG.getGates();
@@ -159,9 +199,12 @@ export async function runPredict({ repo, body, log = console, persist = true, ru
       applyIsotonicToSlot(s, isoEntry);
 
       const mo = odds[s.market_key];
+      const oddMeta = oddsProvenance[s.market_key];
+      if (oddMeta) s.provenance.odd = oddMeta;
       if (mo) {
         s.market_odd = mo;
         s.edge_pct = +((s.fair_prob * mo - 1) * 100).toFixed(2);
+        oddsDiagnostics.slots_with_odds++;
       }
       // Confidence: base por cobertura de dados × QG (multiplicadores walk-forward)
       const qgEval = QG.evaluateSlot(s, { liga: m.liga });
@@ -170,6 +213,7 @@ export async function runPredict({ repo, body, log = console, persist = true, ru
       if (brierConfidence.applied) s.confidence = +(s.confidence * brierConfidence.multiplier).toFixed(4);
       const marketGate = evaluateMarketGate(s, { gates: qgGates, minEdgePp: r.options.min_edge_pp });
       s.provenance = { ...(s.provenance ?? {}), qg: { ...qgEval, market_gate: marketGate }, brier_confidence: brierConfidence };
+      applyAOnlyConfidencePenalty(s);
       if (!marketGate.pass) s.certified = false;
       if (s.provenance.divergence_flag) s.certified = false;
 
@@ -230,10 +274,26 @@ export async function runPredict({ repo, body, log = console, persist = true, ru
     let scoutMs = null;
     if (r.options.scout === true) {
       const tS = Date.now();
+      const requestMatchContext = r.match_context ?? {};
+      const scoutSlotForm = buildScoutSlotForm({
+        repo,
+        match: m,
+        slots: combined,
+        evRanked: ev_ranked,
+      });
       scout = await runScout({
         slots: combined,
-        evidence: { profileHome, profileAway },
-        matchContext: { home: m.home, away: m.away, liga: m.liga, date: m.date, regime_hints: [] },
+        evidence: { profileHome, profileAway, matchEvidence, slotForm: scoutSlotForm },
+        matchContext: {
+          ...requestMatchContext,
+          home: m.home,
+          away: m.away,
+          liga: m.liga,
+          date: m.date,
+          hora: m.hora,
+          temporada,
+          regime_hints: requestMatchContext.regime_hints ?? [],
+        },
         evRanked: ev_ranked,
         options: r.options,
       });
@@ -274,6 +334,7 @@ export async function runPredict({ repo, body, log = console, persist = true, ru
         scout_provider: scout?.model ?? null,
         scout_tokens: scout?.tokens_used ?? 0,
         scout_web_context: scout?.web_context_used ?? false,
+        odds: oddsDiagnostics,
         errors: {},
       },
     };
@@ -409,21 +470,126 @@ function buildCuringaCalibMap(calibA, calibB, liga) {
   return out;
 }
 
-function normalizeOddsSnapshot(snapshot, aliasMap, warnings) {
-  const out = {};
-  for (const [rawKey, odd] of Object.entries(snapshot ?? {})) {
-    const canonical = aliasMap?.[rawKey] ?? rawKey;
-    if (canonical !== rawKey) warnings.push(`market_alias_resolved:${rawKey}->${canonical}`);
-    if (out[canonical] != null) warnings.push(`market_alias_collision:${rawKey}->${canonical}`);
-    out[canonical] = odd;
+function isHtBand(faixa) {
+  const start = Number(String(faixa ?? '').split('-')[0]);
+  return Number.isFinite(start) && start < 46;
+}
+
+function rowsForPeriod(rows, period) {
+  if (!Array.isArray(rows)) return [];
+  if (period === 'HT') return rows.filter((row) => isHtBand(row.faixa));
+  return rows;
+}
+
+function sumRows(rows, field) {
+  return rows.reduce((acc, row) => acc + Number(row?.[field] ?? 0), 0);
+}
+
+function teamEventRows(bands, matchRow, team) {
+  const sideLabel = matchRow.home_team === team ? 'Casa' : 'Visitante';
+  return bands?.byTeam?.[team] ?? bands?.byTeam?.[sideLabel] ?? [];
+}
+
+function totalEventRows(bands) {
+  const values = Object.values(bands?.byTeam ?? {});
+  return values.flat();
+}
+
+function metricForSlot(slot) {
+  if (slot.family === 'escanteios') return 'escanteios';
+  if (slot.family === 'chutes') return 'chutes';
+  if (slot.family === 'cartoes') return 'cartoes';
+  if (slot.family === 'faltas') return 'faltas';
+  if (slot.family === 'btts') return 'btts';
+  if (slot.family === '1x2') return 'resultado_gf_ga';
+  return 'gols';
+}
+
+function numericSummary(values) {
+  const numeric = values.filter((value) => Number.isFinite(Number(value))).map(Number);
+  if (numeric.length === 0) return null;
+  const sum = numeric.reduce((acc, value) => acc + value, 0);
+  return {
+    values: numeric.slice(0, 7),
+    min: Math.min(...numeric),
+    max: Math.max(...numeric),
+    avg: +(sum / numeric.length).toFixed(2),
+    n: numeric.length,
+  };
+}
+
+function valueForSlotSample(slot, sample, team) {
+  const matchRow = sample.match;
+  const isTeamHome = matchRow.home_team === team;
+  const teamGoals = isTeamHome ? matchRow.home_goals : matchRow.away_goals;
+  const opponentGoals = isTeamHome ? matchRow.away_goals : matchRow.home_goals;
+  const totalGoals = Number(matchRow.home_goals ?? 0) + Number(matchRow.away_goals ?? 0);
+  if (slot.family === 'btts') return Number(matchRow.home_goals > 0 && matchRow.away_goals > 0);
+  if (slot.family === '1x2') return teamGoals > opponentGoals ? 1 : teamGoals === opponentGoals ? 0 : -1;
+  if (slot.family === 'gols') {
+    if (slot.scope === 'total') return totalGoals;
+    return teamGoals;
   }
-  return out;
+
+  const periodRows = rowsForPeriod(
+    slot.scope === 'total' ? totalEventRows(sample.bands) : teamEventRows(sample.bands, matchRow, team),
+    slot.period,
+  );
+  if (slot.family === 'cartoes') return sumRows(periodRows, 'cartoes_amarelos') + sumRows(periodRows, 'cartoes_vermelhos');
+  if (slot.family === 'escanteios') return sumRows(periodRows, 'escanteios');
+  if (slot.family === 'chutes') return sumRows(periodRows, 'chutes');
+  if (slot.family === 'faltas') return sumRows(periodRows, 'faltas');
+  return null;
+}
+
+function loadRecentSamples(repo, team, liga, asOf, limit = 7) {
+  const rows = repo.getRecentMatches?.(team, liga, asOf, limit) ?? [];
+  return rows.map((matchRow) => ({
+    match: matchRow,
+    bands: repo.getEventBands?.(matchRow.id_confronto) ?? null,
+  }));
+}
+
+function buildScoutSlotForm({ repo, match, slots, evRanked, limit = 7 }) {
+  if (!repo || !match || !Array.isArray(evRanked) || evRanked.length === 0) return [];
+  const slotByKey = new Map(slots.map((slot) => [slot.market_key, slot]));
+  const topSlots = evRanked.slice(0, 3).map((marketKey) => slotByKey.get(marketKey)).filter(Boolean);
+  if (topSlots.length === 0) return [];
+  try {
+    const homeSamples = loadRecentSamples(repo, match.home, match.liga, match.date, limit);
+    const awaySamples = loadRecentSamples(repo, match.away, match.liga, match.date, limit);
+    return topSlots.map((slot) => {
+      const homeValues = homeSamples.map((sample) => valueForSlotSample(slot, sample, match.home)).filter((value) => value != null);
+      const awayValues = awaySamples.map((sample) => valueForSlotSample(slot, sample, match.away)).filter((value) => value != null);
+      return {
+        market_key: slot.market_key,
+        metric: metricForSlot(slot),
+        home: numericSummary(homeValues),
+        away: numericSummary(awayValues),
+      };
+    });
+  } catch {
+    return [];
+  }
 }
 
 function sampleScore(n, target = 20) {
   const value = Number(n ?? 0);
   if (!Number.isFinite(value) || value <= 0) return 0;
   return Math.max(0, Math.min(1, value / target));
+}
+
+export function applyAOnlyConfidencePenalty(slot, factor = A_ONLY_CONFIDENCE_FACTOR) {
+  const reason = slot?.provenance?.divergence_resolved_by;
+  if (reason !== 'engine_b_unavailable' && reason !== 'engine_b_no_slot') return slot;
+  if (!Number.isFinite(slot?.confidence)) return slot;
+  slot.confidence = +(slot.confidence * factor).toFixed(4);
+  slot.provenance = {
+    ...(slot.provenance ?? {}),
+    a_only_confidence_factor: factor,
+    a_only_confidence_penalty_applied: true,
+  };
+  return slot;
 }
 
 function computeBaseConfidence({ certifiedInputs, profileHome, profileAway, priorsFt }) {

@@ -145,6 +145,7 @@ Colunas: `# | Jogo 1 | Odd 1 | Jogo 2 | Odd 2 | Jogo 3 | Odd 3 | Jogo 4 | Odd 4 
 Para cada ticket:
 - `#` → `#01`, `#02`, etc.
 - `Jogo N` → nome do time casa do confronto N (da API, não hardcoded)
+- Hover/focus em `Jogo N` → card fixo com detalhes de legs, odd, score e resultado; não renderizar popover absoluto dentro da célula da tabela
 - `Odd N` → odd combinada do confronto N (da API, não hardcoded)
 - `Odd Final` → `ticket_odd` da API (negrito, cor ouro)
 - `Stake` → `stake_brl` da API (não hardcoded)
@@ -152,6 +153,12 @@ Para cada ticket:
 - `Resumo` → `X/4 g` greens e `Y r` reds — calculado do campo `result` de cada leg na API
 
 **Regra:** Se a API não retornar odds por confronto, mostre `—`. Não invente valores.
+
+#### 3.2.1 — Cards de resultado da Yankee
+
+- `Greens` e `Reds` contam confrontos únicos presentes na Yankee, deduplicados por `match_id`.
+- Não somar aparições por ticket BIBD; em BIBD 4×, `2` confrontos green não podem virar `8`.
+- `3 acertos` e `4 acertos` continuam sendo contagem de quadras/tickets.
 
 #### 3.3 — Card de frequência BIBD
 
@@ -188,9 +195,11 @@ Campo de stake por ticket: `input[type=number]` com min=1, max=100. Stake total 
 - [ ] Odds de cada jogo vêm de `t.legs` ou da estrutura que a API retornar
 - [ ] Status do ticket reflete `result` da API, não string fixa
 - [ ] Resumo (greens/reds) é calculado, não hardcoded
+- [x] Cards Greens/Reds contam confrontos únicos, não aparições repetidas no BIBD
 - [ ] Card BIBD de frequência presente e dinâmico
 - [ ] Botão de submissão com dupla confirmação funciona
 - [ ] Score Médio na aba Confrontos é dinâmico
+- [x] Hover/focus dos confrontos usa card fixo e não desloca a matriz Yankee
 
 ---
 
@@ -207,6 +216,8 @@ Campo de stake por ticket: `input[type=number]` com min=1, max=100. Stake total 
 Uma **dupla** é uma aposta combinada de dois mercados do **mesmo jogo**. Exemplo: `Over 2.5 gols FT + Ambos marcam FT` no mesmo Barcelona × Alavés. A probabilidade conjunta real é maior que `P(over 2.5) × P(btts)` porque esses eventos são positivamente correlacionados. O sistema já calcula os legs — a UI precisa agrupá-los por `match_id` e exibir pares.
 
 ### O que a aba deve ter
+
+**Status atual (2026-05-16):** a aba `Agressivas EV+` tem painel executivo com cards `Duplas` e `Simples`, contagem `filtradas/total`, percentual `do total`, Green/Red com percentual sobre resolvidos, filtro de tipo `Todos/Duplas/Simples` e abertura/fechamento independente das duas seções para manter a página compacta.
 
 #### 4.1 — Seção de Duplas (parte superior)
 
@@ -240,19 +251,23 @@ A seção "Trincas EV+ (Correlação Aplicada)" que está hoje no código **não
 
 ### Critério de aceite 4
 
-- [ ] Aba nomeada "Agressivas EV+"
-- [ ] Seção de duplas presente com agrupamento por `match_id`
-- [ ] Cada dupla mostrando odd combinada e EV% dinâmicos
-- [ ] Expansão de dupla mostrando as duas legs com detalhes
-- [ ] Seção de top-7 simples presente e dinâmica
-- [ ] Badge "no board" funcional (cruza com dados do Yankee)
-- [ ] Seção "Trincas" removida
+- [x] Aba nomeada "Agressivas EV+"
+- [x] Seção de duplas presente com agrupamento por `match_id`
+- [x] Cada dupla mostrando odd combinada e EV% dinâmicos
+- [x] Expansão de dupla mostrando as duas legs com detalhes
+- [x] Seção de simples presente e dinâmica
+- [x] Badge "no board" funcional (cruza com dados do Yankee)
+- [x] Seção "Trincas" removida
+- [x] Cards executivos de `Duplas` e `Simples` com contador e percentual
+- [x] Cards executivos mostram Green/Red e percentual de cada produto sobre resolvidos
+- [x] Filtro `Todos/Duplas/Simples` funcional
+- [x] Seções `Duplas` e `Simples` com abrir/fechar independente
 
 ---
 
-## BLOCO 5 — ADICIONAR: ABA RESOLVER
+## BLOCO 5 — ABA RESOLVER
 
-**Arquivo atual:** Aba não existe.
+**Estado atual:** Aba implementada em `apps/web/src/app/page.tsx` com resumo, dry-run, reparo, liquidação, painel de progresso e exportação CSV.
 
 **Referência:** Aba `value="resolver"` no Apollo Turbo — seção "Resolver · predições Motor Turbo".
 
@@ -262,23 +277,35 @@ Esta aba é o coração operacional. Sem ela, não há como fechar posições ap
 
 #### 5.1 — Controles
 
-- Botão **"Resolver agora"** (âmbar): liquida predições pendentes contra resultados reais
+- Botão **"Liquidar Run"** (âmbar): liquida predições pendentes contra resultados reais
   - Chama `POST /v1/settle/:run_id`
   - Dupla confirmação: mesmo padrão do botão Yankee (clique → 15s → confirma)
+  - Após confirmar, exibe progresso por etapas e fica desabilitado apenas enquanto a ação roda
 - Botão **"Reparar histórico"** (ciano): reseta e reliquida um run fechado com as regras atuais
+- Botão **"Dry-run"**: simula o settlement sem gravar e exibe progresso/resultado próprio
 - Botão **"Atualizar"** (verde): recarrega os dados sem fazer settlement
 
-#### 5.2 — Mensagem de resultado
+#### 5.2 — Atividade e resultado
 
-Após settlement bem-sucedido, exibir banner verde com:
-- Modo `settle`: `"Resolvido · {settled} liquidadas · {skipped} sem mercado · {no_data} sem dados"`
-- Modo `repair`: `"Reparo concluído · {reset_predictions} predições resetadas · {settled} reliquidadas"`
+Durante dry-run, liquidação ou reparo, exibir um painel de atividade com:
+- Status de confirmação, andamento, sucesso ou erro
+- Barra de progresso e etapas numeradas
+- Detalhe operacional curto, por exemplo `"API avaliando resultados reais"`
+
+Após conclusão, exibir apenas o banner compacto do último resultado operacional:
+- Modo `dry-run`: `"Dry-run — simulação (sem gravação)"`
+- Modo `settle`: `"Última liquidação gravada"`
+- Modo `repair`: `"Histórico reparado"`
+
+Ao iniciar uma nova ação do Resolver, limpar banners antigos de dry-run/liquidação/reparo para evitar cards redundantes.
 
 #### 5.3 — KPIs (6 colunas)
 
-`EV+ cert. | Board | Greens | Reds | Pendentes | Void`
+`Predições | Green | Red | Pendentes | Cert. | Taxa`
 
-Cores: Greens → verde; Reds → rosa; Pendentes → âmbar se >0, cinza se 0.
+Cores: Green → verde; Red → rosa; Pendentes → âmbar se >0, cinza se 0.
+
+Cards `Green` e `Red` mostram quantidade e percentual no mesmo card. A base do percentual é `green + red` (resolvidas), por exemplo `3324 / Green / 48.4% dos resolvidos`.
 
 #### 5.4 — Tabela de predições
 
@@ -286,16 +313,17 @@ Colunas: `Run ID | Home | Away | Liga | Mercado | Família | Período | Direçã
 
 Cores de linha: verde para `GREEN`, rosa para `RED`, neutro para pendente.
 
-Botão de exportar CSV no cabeçalho da tabela.
+Para estabilidade da Web, a tela renderiza uma amostra inicial de 500 predições e mantém o CSV completo no botão de exportação.
 
 ### Critério de aceite 5
 
-- [ ] Aba "Resolver" aparece no menu de tabs
-- [ ] Botão "Resolver agora" faz `POST /v1/settle/:run_id` e exibe resultado
-- [ ] Dupla confirmação funciona nos dois botões
-- [ ] KPIs dinâmicos refletem o estado real das predições
-- [ ] Tabela mostra todas as predições com cores corretas por resultado
-- [ ] Exportar CSV funciona
+- [x] Aba "Resolver" aparece no menu de tabs
+- [x] Botão "Liquidar Run" faz `POST /v1/settle/:run_id` e exibe resultado
+- [x] Dupla confirmação funciona para liquidação e reparo
+- [x] Ações exibem progresso visual e limpam banners antigos ao iniciar nova operação
+- [x] KPIs dinâmicos refletem o estado real das predições
+- [x] Tabela mostra predições com cores corretas por resultado sem renderizar o run inteiro no DOM
+- [x] Exportar CSV funciona com a lista completa
 
 ---
 
@@ -626,9 +654,10 @@ O dev só pode considerar entregue quando **todos** os itens abaixo estiverem ma
 - [ ] Yankee matrix: odds, stake, status e resumo todos dinâmicos
 - [ ] Yankee: card de frequência BIBD presente
 - [ ] Yankee: botões de dry-run e submissão real com dupla confirmação
-- [ ] Agressivas: renomeada para "Agressivas EV+"
-- [ ] Agressivas: seção de duplas implementada
-- [ ] Agressivas: seção "Trincas" removida
+- [x] Agressivas: renomeada para "Agressivas EV+"
+- [x] Agressivas: seção de duplas implementada
+- [x] Agressivas: seção "Trincas" removida
+- [x] Agressivas: cards executivos, filtro por tipo e abrir/fechar por seção
 - [ ] Confrontos: Score Médio dinâmico (linha 221 do arquivo original)
 
 **UI — Abas novas**

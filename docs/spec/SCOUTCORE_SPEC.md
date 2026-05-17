@@ -143,10 +143,16 @@
     "hora": "20:00"
   },
 
-  "match_context": {                          // OPCIONAL — D11/regime hints
+  "match_context": {                          // OPCIONAL — contexto operacional + D11/regime hints
     "regime_hints": ["derby", "final_temporada"],
     "weather": "rain_heavy",
-    "referee": "Wilton Pereira Sampaio"
+    "referee": "Wilton Pereira Sampaio",
+    "stadium": "Maracanã",
+    "venue_city": "Rio de Janeiro",
+    "home_city": "Rio de Janeiro",
+    "away_city": "São Paulo",
+    "rodada": 36,
+    "season": "2026"
   },
 
   "odds_snapshot": {                          // opcional
@@ -172,6 +178,7 @@
 - `match.liga` precisa estar em `markets_catalog.supported_leagues`.
 - `match.date` no passado → 400 (use `/v1/replay`).
 - `odds_snapshot[k]` deve estar em `[1.01, 1000]`.
+- `match_context` aceita `referee`, `stadium`/`venue`, `venue_city`, `home_city`, `away_city`, `rodada`/`round`, `season`/`temporada` e `weather`; esses campos alimentam a camada SCOUT/Sonar quando `options.scout=true`.
 - `regime_hints[]` valores válidos: `derby`, `classic`, `final_temporada`, `relegation_battle`, `cup_decider`, `friendly`, `weather_rain`, `weather_extreme`. Outros viram warning e são ignorados.
 
 ### 4.3. Response

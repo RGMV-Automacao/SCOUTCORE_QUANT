@@ -1,0 +1,81 @@
+{
+  "latency_ms": 2233,
+  "model": "gpt-4o-2024-08-06",
+  "usage": {
+    "prompt_tokens": 2353,
+    "completion_tokens": 285,
+    "total_tokens": 2638,
+    "prompt_tokens_details": {
+      "cached_tokens": 1024,
+      "audio_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "audio_tokens": 0,
+      "accepted_prediction_tokens": 0,
+      "rejected_prediction_tokens": 0
+    }
+  },
+  "parsed_overlay": {
+    "model": "gpt-4o",
+    "latency_ms": 2235,
+    "tokens_used": 2638,
+    "web_context_used": true,
+    "red_flags": [
+      {
+        "market_key": "escanteios_total_ht_under_6_5",
+        "reason": "alta variância em escanteios HT",
+        "severity": "medium",
+        "confidence_delta": -0.15,
+        "rationale": "A variância nos escanteios do primeiro tempo é alta, com valores recentes variando entre 3 e 7."
+      },
+      {
+        "market_key": "cartoes_total_ft_over_2_5",
+        "reason": "alta variância em cartões",
+        "severity": "medium",
+        "confidence_delta": -0.15,
+        "rationale": "A variância nos cartões é alta, com valores recentes variando entre 2 e 6."
+      }
+    ],
+    "narrative": "O slot mais confiável é o '1x2_total_ft_home', com uma confiança de 20% e um edge de 9.2%, sem fatores contextuais adversos significativos. A ausência de desfalques confirmados ou mudanças de técnico sugere que o edge parece limpo. No entanto, a alta variância nos mercados de escanteios e cartões recomenda cautela. No geral, o edge parece limpo, mas cautela é recomendada em mercados de alta variância.",
+    "scout_score": 59,
+    "skip_reason": null
+  },
+  "raw_content": "{\n  \"red_flags\": [\n    {\n      \"market_key\": \"escanteios_total_ht_under_6_5\",\n      \"reason\": \"alta variância em escanteios HT\",\n      \"severity\": \"medium\",\n      \"confidence_delta\": -0.15,\n      \"rationale\": \"A variância nos escanteios do primeiro tempo é alta, com valores recentes variando entre 3 e 7.\"\n    },\n    {\n      \"market_key\": \"cartoes_total_ft_over_2_5\",\n      \"reason\": \"alta variância em cartões\",\n      \"severity\": \"medium\",\n      \"confidence_delta\": -0.15,\n      \"rationale\": \"A variância nos cartões é alta, com valores recentes variando entre 2 e 6.\"\n    }\n  ],\n  \"narrative\": \"O slot mais confiável é o '1x2_total_ft_home', com uma confiança de 20% e um edge de 9.2%, sem fatores contextuais adversos significativos. A ausência de desfalques confirmados ou mudanças de técnico sugere que o edge parece limpo. No entanto, a alta variância nos mercados de escanteios e cartões recomenda cautela. No geral, o edge parece limpo, mas cautela é recomendada em mercados de alta variância.\",\n  \"scout_score\": 75\n}",
+  "raw_response": {
+    "id": "chatcmpl-DfcdZ7ITKuxdG227mt2sBYwVyrZOv",
+    "object": "chat.completion",
+    "created": 1778812341,
+    "model": "gpt-4o-2024-08-06",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\n  \"red_flags\": [\n    {\n      \"market_key\": \"escanteios_total_ht_under_6_5\",\n      \"reason\": \"alta variância em escanteios HT\",\n      \"severity\": \"medium\",\n      \"confidence_delta\": -0.15,\n      \"rationale\": \"A variância nos escanteios do primeiro tempo é alta, com valores recentes variando entre 3 e 7.\"\n    },\n    {\n      \"market_key\": \"cartoes_total_ft_over_2_5\",\n      \"reason\": \"alta variância em cartões\",\n      \"severity\": \"medium\",\n      \"confidence_delta\": -0.15,\n      \"rationale\": \"A variância nos cartões é alta, com valores recentes variando entre 2 e 6.\"\n    }\n  ],\n  \"narrative\": \"O slot mais confiável é o '1x2_total_ft_home', com uma confiança de 20% e um edge de 9.2%, sem fatores contextuais adversos significativos. A ausência de desfalques confirmados ou mudanças de técnico sugere que o edge parece limpo. No entanto, a alta variância nos mercados de escanteios e cartões recomenda cautela. No geral, o edge parece limpo, mas cautela é recomendada em mercados de alta variância.\",\n  \"scout_score\": 75\n}",
+          "refusal": null,
+          "annotations": []
+        },
+        "logprobs": null,
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 2353,
+      "completion_tokens": 285,
+      "total_tokens": 2638,
+      "prompt_tokens_details": {
+        "cached_tokens": 1024,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "service_tier": "default",
+    "system_fingerprint": "fp_c04e52b130"
+  }
+}

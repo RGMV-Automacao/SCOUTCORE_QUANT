@@ -13,6 +13,8 @@
  *   top_n               Máximo de picks
  */
 
+import { normalizeFamilies, normalizeFamily } from '../lib/family-aliases.mjs';
+
 function evReal(slot) {
   const prob = slot.fair_prob ?? 0;
   const odd = slot.market_odd ?? 0;
@@ -35,7 +37,7 @@ function rankValue(slot, rankBy) {
  * @returns {{ picks: object[], meta: object }}
  */
 export function run(slots, params = {}) {
-  const families = new Set(params.families ?? []);
+  const families = normalizeFamilies(params.families ?? []);
   const periods  = params.periods?.length ? new Set(params.periods) : null;
   const minEdge  = params.min_edge_pct ?? 0;
   const minProb  = params.min_prob ?? 0;
@@ -44,7 +46,7 @@ export function run(slots, params = {}) {
 
   const filtered = slots.filter((s) => {
     if (!s.certified) return false;
-    if (families.size > 0 && !families.has(s.family)) return false;
+    if (families.size > 0 && !families.has(normalizeFamily(s.family))) return false;
     if (periods && !periods.has(s.period)) return false;
     if ((s.edge_pct ?? 0) < minEdge) return false;
     if ((s.fair_prob ?? 0) < minProb) return false;
