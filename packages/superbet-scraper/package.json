@@ -1,0 +1,14 @@
+{
+  "name": "@scoutcore/superbet-scraper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Superbet odds API client + parser (self-contained, copiado e adaptado de opta-extractor/motor/scraper).",
+  "main": "src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

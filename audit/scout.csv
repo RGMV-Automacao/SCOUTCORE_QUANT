@@ -1,0 +1,6 @@
+rank,market_key,family,direction,line,fair_prob,market_odd,edge_pct,confidence,certified,isotonic_applied,calib_applied,phantom
+1,asian_total_total_ht_under_0_75,asian_total,under,0.75,0.3565439187680107,3.15,12.31,0.2,false,false,false,false
+2,gols_total_ft_under_4_5,gols,under,4.5,0.8757468379866297,1.28,12.1,0.2,false,false,false,false
+3,marca_ultimo_total_ft_home,marca_ultimo,home,,0.5073234529696763,2.2,11.61,0.2,false,false,false,false
+4,dupla_total_ht_1x,dupla,1x,,0.7644893590691046,1.44,10.09,0.2,false,false,false,false
+5,asian_total_total_ft_under_3_75,asian_total,under,3.75,0.7334280293177149,1.5,10.01,0.2,false,false,false,false

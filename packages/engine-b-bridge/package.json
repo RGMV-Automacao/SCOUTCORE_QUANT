@@ -1,0 +1,8 @@
+{
+  "name": "@scoutcore/engine-b-bridge",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "src/index.mjs",
+  "exports": { ".": "./src/index.mjs" }
+}

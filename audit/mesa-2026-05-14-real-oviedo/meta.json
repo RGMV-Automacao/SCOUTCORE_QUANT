@@ -1,0 +1,18 @@
+{
+  "mesa_id": "mesa-2026-05-14-real-oviedo",
+  "input": "C:\\Users\\Rogerio\\Desktop\\RGMV_PROJETOS\\SCOUTCORE_QUANT\\audit\\mesa-2026-05-14-real-oviedo\\input.json",
+  "api": "http://127.0.0.1:4040",
+  "fixtures_count": 1,
+  "slots_count": 530,
+  "ranked_count": 6,
+  "generated_at": "2026-05-15T02:53:49.400Z",
+  "files": [
+    "request.json",
+    "response.json",
+    "mesa_summary.csv",
+    "mesa_ranked.csv",
+    "mesa_slots.csv",
+    "audit_unified.csv",
+    "raw/*.json"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "yankee",
+  "label": "Yankee BIBD",
+  "description": "10-12 confrontos × 2-4 legs, tickets em design BIBD balanceado",
+  "type": "board_based",
+  "params": {
+    "n_confrontos": [10, 12],
+    "min_confrontos": 10,
+    "legs_per_confronto": { "min": 2, "max": 4 },
+    "odd_combo_range": [2.50, 3.50],
+    "odd_combo_exception": 3.80,
+    "odd_leg_range": [1.20, 2.10],
+    "edge_min_pct": 2,
+    "builder_discount": 0.854,
+    "builder_discount_min_legs": 3,
+    "design": "bibd",
+    "stake_per_ticket_brl": 3,
+    "diversity": {
+      "min_families": 3,
+      "max_same_family_pct": 0.45,
+      "max_per_league": 4,
+      "min_team_or_ht": 2
+    },
+    "suspended_market_keys": [
+      "asian_handicap_total_ft_home_minus_1"
+    ],
+    "suspended_market_key_prefixes": [
+      "escanteios_race_total_ft_none_"
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "seguros",
+  "label": "Seguros (Prob 85%+)",
+  "description": "Mercados de altíssima probabilidade — migalhas de ouro",
+  "type": "global_filter",
+  "params": {
+    "min_prob": 0.85,
+    "min_edge_pct": 1,
+    "rank_by": "fair_prob",
+    "top_n": 20
+  }
+}

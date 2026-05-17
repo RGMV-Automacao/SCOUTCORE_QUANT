@@ -1,0 +1,15 @@
+{
+  "mesa_id": "mesa-2026-05-12",
+  "input": "C:\\Users\\Rogerio\\Desktop\\RGMV_PROJETOS\\SCOUTCORE_QUANT\\tmp_predict.json",
+  "api": "http://127.0.0.1:4042",
+  "fixtures_count": 1,
+  "slots_count": 576,
+  "ranked_count": 5,
+  "generated_at": "2026-05-12T02:31:06.951Z",
+  "files": [
+    "mesa_summary.csv",
+    "mesa_ranked.csv",
+    "mesa_slots.csv",
+    "raw/*.json"
+  ]
+}

@@ -1,0 +1,172 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ── FutMaxStats Premium Theme ─────────────────────────── */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+
+  /* FutMaxStats brand colors — Lovable palette */
+  --color-neon-green: #31c48d;
+  --color-neon-blue: #00d4ff;
+  --color-neon-purple: #8b5cf6;
+  --color-neon-pink: #ff006e;
+  --color-gold: #f5b731;
+  --color-emerald: #10b981;
+  --color-cyan: #06b6d4;
+  --color-orange: #f97316;
+  --color-blue: #3b82f6;
+  --color-surface-elevated: hsl(220 16% 13%);
+}
+
+/* Dark-first theme (FutMaxStats — Lovable green palette) */
+:root {
+  --radius: 0.625rem;
+  --background: hsl(220 20% 7%);
+  --foreground: hsl(210 20% 92%);
+  --card: hsl(220 18% 10%);
+  --card-foreground: hsl(210 20% 92%);
+  --popover: hsl(220 18% 10%);
+  --popover-foreground: hsl(210 20% 92%);
+  --primary: hsl(152 60% 48%);
+  --primary-foreground: hsl(220 20% 7%);
+  --secondary: hsl(220 16% 16%);
+  --secondary-foreground: hsl(210 20% 85%);
+  --muted: hsl(220 14% 14%);
+  --muted-foreground: hsl(215 12% 50%);
+  --accent: hsl(152 50% 40%);
+  --accent-foreground: hsl(210 20% 95%);
+  --destructive: hsl(0 72% 51%);
+  --border: hsl(220 14% 18%);
+  --input: hsl(220 14% 18%);
+  --ring: hsl(152 60% 48%);
+  --chart-1: hsl(152 60% 48%);
+  --chart-2: hsl(210 80% 55%);
+  --chart-3: hsl(45 93% 58%);
+  --chart-4: hsl(270 60% 55%);
+  --chart-5: hsl(0 72% 51%);
+  --sidebar: hsl(220 20% 5%);
+  --sidebar-foreground: hsl(210 15% 70%);
+  --sidebar-primary: hsl(152 60% 48%);
+  --sidebar-primary-foreground: hsl(220 20% 7%);
+  --sidebar-accent: hsl(220 16% 12%);
+  --sidebar-accent-foreground: hsl(210 20% 90%);
+  --sidebar-border: hsl(220 14% 14%);
+  --sidebar-ring: hsl(152 60% 48%);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: dark;
+    scrollbar-gutter: stable;
+  }
+  body {
+    @apply bg-background text-foreground;
+    overflow-y: scroll;
+  }
+
+  select,
+  input[type="date"],
+  input[type="time"],
+  input[type="datetime-local"],
+  input[type="week"],
+  input[type="month"] {
+    color-scheme: dark;
+    accent-color: hsl(152 60% 48%);
+    background-color: hsl(220 18% 10%);
+    border-color: hsl(152 60% 48% / 0.28);
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+  input[type="week"]::-webkit-calendar-picker-indicator,
+  input[type="month"]::-webkit-calendar-picker-indicator {
+    border-radius: 6px;
+    cursor: pointer;
+    filter: invert(72%) sepia(38%) saturate(664%) hue-rotate(108deg) brightness(95%) contrast(88%);
+    opacity: 0.9;
+    padding: 2px;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator:hover,
+  input[type="time"]::-webkit-calendar-picker-indicator:hover,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover,
+  input[type="week"]::-webkit-calendar-picker-indicator:hover,
+  input[type="month"]::-webkit-calendar-picker-indicator:hover {
+    background-color: hsl(152 60% 48% / 0.16);
+  }
+
+  select option {
+    background-color: hsl(220 18% 10%);
+    color: hsl(210 20% 92%);
+  }
+
+  select option:checked,
+  select option:hover {
+    background-color: hsl(152 60% 48% / 0.25);
+    color: hsl(210 20% 98%);
+  }
+}
+
+.glass {
+  background: hsl(220 18% 10% / 0.7);
+  backdrop-filter: blur(20px);
+  border: 1px solid hsl(220 14% 18%);
+}
+
+.glass-strong {
+  background: hsl(220 18% 10% / 0.92);
+  backdrop-filter: blur(40px);
+  border: 1px solid hsl(220 14% 22%);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, hsl(152 60% 48%), hsl(170 60% 40%), hsl(152 80% 65%));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
