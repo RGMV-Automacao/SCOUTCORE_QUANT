@@ -1,0 +1,907 @@
+{
+  "cookies": [
+    {
+      "name": "superCanaryId",
+      "value": "97",
+      "domain": "superbet.bet.br",
+      "path": "/",
+      "expires": 1810991672.278592,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "OptanonAlertBoxClosed",
+      "value": "2026-05-22T13:14:40.613Z",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1810991680,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_ga",
+      "value": "GA1.1.916130287.1779455676",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1814015680.651001,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_uetsid",
+      "value": "30eac8e055e011f1b37fd927d1a9ba41",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1779542080,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_uetvid",
+      "value": "30eae89055e011f1ae7e453437bdd9f6",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1813151680,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "OptanonConsent",
+      "value": "isGpcEnabled=0&datestamp=Fri+May+22+2026+10%3A14%3A40+GMT-0300+(Hor%C3%A1rio+Padr%C3%A3o+de+Bras%C3%ADlia)&version=202501.1.0&browserGpcFlag=0&isIABGlobal=false&hosts=&consentId=6eb51550-931a-4cd9-8f0e-2a5fc0f1b0f9&interactionCount=1&isAnonUser=1&landingPath=NotLandingPage&groups=C0001%3A1%2CC0002%3A1%2CC0003%3A1%2CC0004%3A1&AwaitingReconsent=false&intType=1",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1810991680,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "f3k2kqs7xc",
+      "value": "e9d7f13c2bef8394afa897929d49f006",
+      "domain": "superbet.bet.br",
+      "path": "/",
+      "expires": 1810991680,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "_fs_sample_user_superbet_bet_br",
+      "value": "true",
+      "domain": "superbet.bet.br",
+      "path": "/",
+      "expires": 1787231680,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "MUID",
+      "value": "1767B8C7BA70667205FFAFA6BB0967EE",
+      "domain": ".bing.com",
+      "path": "/",
+      "expires": 1813151680.862547,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "MR",
+      "value": "0",
+      "domain": ".bat.bing.com",
+      "path": "/",
+      "expires": 1780060480.862728,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_twpid",
+      "value": "tw.1779455681090.927409422217042825",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1813151681.093696,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "_tgpc",
+      "value": "ba8a9a8f-802b-4d57-bdb3-49cf0b766b9f",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1811000466,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_fbp",
+      "value": "fb.2.1779455681163.680645239182585198",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1787240466,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ttp",
+      "value": "3E55ewHsn2RY5e7x7mPkQy1tCqs",
+      "domain": ".tiktok.com",
+      "path": "/",
+      "expires": 1813160466.977561,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "TDID",
+      "value": "93531f00-eee1-4530-b14b-fa5c23f27c3f",
+      "domain": ".adsrvr.org",
+      "path": "/",
+      "expires": 1811000466.861975,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "flashtalkingad1",
+      "value": "\"GUID=67161D620D330A\"",
+      "domain": ".flashtalking.com",
+      "path": "/",
+      "expires": 1813619681.295803,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_tt_enable_cookie",
+      "value": "1",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1813160467,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ttp",
+      "value": "01KS7X5RTAPSJZTVDYHGFKPPX1_.tt.2",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1813160467,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "muc_ads",
+      "value": "cfa27314-6c10-4a75-ad48-d653462872e4",
+      "domain": ".t.co",
+      "path": "/",
+      "expires": 1814015681.529072,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "guest_id_marketing",
+      "value": "v1%3A177945568894650420",
+      "domain": ".twitter.com",
+      "path": "/",
+      "expires": 1814015681.530912,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "guest_id_ads",
+      "value": "v1%3A177945568894650420",
+      "domain": ".twitter.com",
+      "path": "/",
+      "expires": 1814015681.530957,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "personalization_id",
+      "value": "\"v1_ice7tzdGc2tXPVU5zsJrug==\"",
+      "domain": ".twitter.com",
+      "path": "/",
+      "expires": 1814015681.530976,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "guest_id",
+      "value": "v1%3A177945568894650420",
+      "domain": ".twitter.com",
+      "path": "/",
+      "expires": 1814015681.530992,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "IDE",
+      "value": "AHWqTUn2yTf0DKy7AJ_LjMl7Ggm2u2rMzaw4miFAD4Y4MTF1OISa8QOyDAwXtzF6wCE",
+      "domain": ".doubleclick.net",
+      "path": "/",
+      "expires": 1814015681.532408,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "geid",
+      "value": "05010006-d9c1-4925-8400-148c6a1056c9",
+      "domain": ".trafficguard.ai",
+      "path": "/",
+      "expires": 1811000467.082413,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "XANDR_PANID",
+      "value": "vfJsUJQthwACp3-KCmbKxcZMR3bJcwYCXNd-Pfewi6gPpnC7F0kN6oXXcO2nCOskz1x8AZf8KR1zqGe2QdPxARJlP7RZ3HMzSbx_THNzSyA.",
+      "domain": ".adnxs.com",
+      "path": "/",
+      "expires": 1787231682.554471,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None",
+      "partitionKey": "https://superbet.bet.br",
+      "_crHasCrossSiteAncestor": true
+    },
+    {
+      "name": "uuid2",
+      "value": "6924144261884435138",
+      "domain": ".adnxs.com",
+      "path": "/",
+      "expires": 1787231682.554585,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "audit_p",
+      "value": "1|8apfKyUk6LXaeuDX4+1KkJ5O9nI313YVgUvzviWXq7yHVW0FnrJ0v6dw8brfLERLCHw5NSolEccwHTRO1/p4iHX0qfg68IpFQAPcN3ARK874hWisBmYJ189Rj8Hy8MCWprKddiBLXdgI1YST8iyHHOJ6GlhS1dXEZlZcvTk/RabREvsM2ra73MRmS8gGs6ylTlon0IrnE1p4+byUJuUHKNl4Am3SUH3rwETMVR8lnVPictVKI3nW/ZSmfFa9k+2RfCCm1vF3Tgn8ih/oL8+08tuVaVkDFDbShAUs62yL6R/QD5U7tEfUTQ==",
+      "domain": ".rubiconproject.com",
+      "path": "/",
+      "expires": 1810991682.351666,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None",
+      "partitionKey": "https://superbet.bet.br",
+      "_crHasCrossSiteAncestor": true
+    },
+    {
+      "name": "khaos",
+      "value": "MPGXZ1OO-1A-IK8B",
+      "domain": ".rubiconproject.com",
+      "path": "/",
+      "expires": 1810991682.351738,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "khaos_p",
+      "value": "MPGXZ1OO-1A-IK8B",
+      "domain": ".rubiconproject.com",
+      "path": "/",
+      "expires": 1810991682.351782,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None",
+      "partitionKey": "https://superbet.bet.br",
+      "_crHasCrossSiteAncestor": true
+    },
+    {
+      "name": "audit",
+      "value": "1|8apfKyUk6LXaeuDX4+1KkJ5O9nI313YVgUvzviWXq7yHVW0FnrJ0v6dw8brfLERLCHw5NSolEccwHTRO1/p4iHX0qfg68IpFQAPcN3ARK874hWisBmYJ189Rj8Hy8MCWprKddiBLXdgI1YST8iyHHOJ6GlhS1dXEZlZcvTk/RabREvsM2ra73MRmS8gGs6ylTlon0IrnE1p4+byUJuUHKNl4Am3SUH3rwETMVR8lnVPictVKI3nW/ZSmfFa9k+2RfCCm1vF3Tgn8ih/oL8+08tuVaVkDFDbShAUs62yL6R/QD5U7tEfUTQ==",
+      "domain": ".rubiconproject.com",
+      "path": "/",
+      "expires": 1810991682.35183,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_k_gid_collect",
+      "value": "1",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1779628482,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "kwai_ckid",
+      "value": "1779455690045_71659195091387177",
+      "domain": ".mythad.com",
+      "path": "/",
+      "expires": 1814024468.087393,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "kwai_uuid",
+      "value": "86f55523b21839d326ef66c1b5756a21",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1810991682,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_k_cp",
+      "value": "1",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1779542082,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "google_gid",
+      "value": "CAESEKBHQ1iUwJrerVQdy3zhEJw",
+      "domain": ".mythad.com",
+      "path": "/",
+      "expires": 1814015683.309532,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "slfp",
+      "value": "eyJ1dWlkIjoiYjdiOTlhNWYtMTM1My00YWM5LWIzM2EtM2E1OTRmYjljMGMw%0AIiwibmFtZSI6InZrX3N1cGVyYmV0YnIiLCJ0cyI6IjIwMjYtMDUtMjIgMTA6%0AMTQ6NTUgLTAzMDAifQ%3D%3D%0A",
+      "domain": ".prdredir.com",
+      "path": "/",
+      "expires": 1782057146.871522,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "__user_id",
+      "value": "uid-2264345587.3955762961",
+      "domain": "superbet.bet.br",
+      "path": "/",
+      "expires": 1810991687,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "CMID",
+      "value": "ahBW0MAoIVEAPfzbAPUw0gAA",
+      "domain": ".casalemedia.com",
+      "path": "/",
+      "expires": 1810991689.188093,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "CMPS",
+      "value": "5762",
+      "domain": ".casalemedia.com",
+      "path": "/",
+      "expires": 1787231688.982358,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "CMPRO",
+      "value": "5762",
+      "domain": ".casalemedia.com",
+      "path": "/",
+      "expires": 1787231689.188178,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "tuuid",
+      "value": "f4230ca3-9412-4a67-a772-0d264051bd93",
+      "domain": ".bidswitch.net",
+      "path": "/",
+      "expires": 1810991689.389501,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "c",
+      "value": "1779455696",
+      "domain": ".bidswitch.net",
+      "path": "/",
+      "expires": 1810991689.252528,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "tuuid_lu",
+      "value": "1779455696",
+      "domain": ".bidswitch.net",
+      "path": "/",
+      "expires": 1810991689.389662,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "KRTBCOOKIE_377",
+      "value": "6810-93531f00-eee1-4530-b14b-fa5c23f27c3f&KRTB&22918-93531f00-eee1-4530-b14b-fa5c23f27c3f&KRTB&22926-93531f00-eee1-4530-b14b-fa5c23f27c3f&KRTB&23031-93531f00-eee1-4530-b14b-fa5c23f27c3f",
+      "domain": ".pubmatic.com",
+      "path": "/",
+      "expires": 1787231689.382095,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "PugT",
+      "value": "1779455696",
+      "domain": ".pubmatic.com",
+      "path": "/",
+      "expires": 1782047689.382182,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_xpid_3959",
+      "value": "7421607477",
+      "domain": "sdk.eu.xtremepush.com",
+      "path": "/",
+      "expires": 1795007697.491309,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "superbetLocale",
+      "value": "pt-BR",
+      "domain": "superbet.bet.br",
+      "path": "/",
+      "expires": 1814025146,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_tguatd",
+      "value": "eyJzYyI6IihkaXJlY3QpIiwiZnRzIjoiKGRpcmVjdCkifQ==",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1779466266,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_tgidts",
+      "value": "eyJzaCI6ImQ0MWQ4Y2Q5OGYwMGIyMDRlOTgwMDk5OGVjZjg0MjdlIiwiY2kiOiJjMTQ5NTcwMi04NTNiLTRkMjUtYThiYS1jYzQxNjVkZmY2NGYiLCJzaSI6ImNlZWQ3MTE2LTk3NGUtNDQ1Ny05NzkzLWIyZjEyZDBjNmNhOCJ9",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1779466266,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "__cf_bm",
+      "value": "MvQc2ZqbKZl1BF56.Jikhliisa0.N6RTLMf_wjFYLpc-1779464452.7170978-1.0.1.1-tZKFwkJyGdNkZzCmXVqX03SWxxioNQmKC1AMQCAbtI6XuEcRTINX75TljYFBF0GUmou0bpn9rsGmurxGRZj9_ZlBBrlsASnD25F4Jwra4dBLVw2dt3JKMXo99Da6RLDT",
+      "domain": ".twitter.com",
+      "path": "/",
+      "expires": 1779466245.378427,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "__cf_bm",
+      "value": "IiFQp_HZZKkpcFUCyuMKpDgRmwP6x8494uugRnqZ450-1779464452.7164416-1.0.1.1-8KKC9ffyDbmYnf6ejyaScayyoZfxGphFzcZyUN40UnO4i5iEIDaaGVoN3VDLhZ5RiaAFcdSh2jtZj_74O44gKhoLKNeNHuIcqGmfOJcjhsFqvnwX_.8EN8T5iOuv75om",
+      "domain": ".t.co",
+      "path": "/",
+      "expires": 1779466245.470033,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "aws-waf-token",
+      "value": "7445ef42-87b0-45ce-9053-23e6e5864665:EAoAZwts5xIhAAAA:Shu6UuoATDe1ast7IQUO0U7OcyHFIoFAAOb61CdxbXYVUHyZiUkbgTcBR6LoyAB+WelutcdVgScMRVUn8LVBmdQt45IEB9tmoQUMkVoR4e7QW3CRrAtF2qV/vlmuWg/geXAbnyRhhQ6KpMnPMER81CmxIRxQKiVCfDzismq8pswAML0R4gbItTsJBXBtNvC1",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1779810048,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_fs_dwell_passed",
+      "value": "c4630f2c-7adc-4c73-b717-f71c26ec8591",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "_tglksd",
+      "value": "eyJzIjoiY2VlZDcxMTYtOTc0ZS00NDU3LTk3OTMtYjJmMTJkMGM2Y2E4Iiwic3QiOjE3Nzk0NjQ0NDUxOTcsInNvZCI6IihkaXJlY3QpIiwic29kdCI6MTc3OTQ1NTY4MTEzMywic29kcyI6ImMiLCJzb2RzdCI6MTc3OTQ2NDQ1MzExNn0=",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1811000466,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_gcl_au",
+      "value": "1.1.759783928.1779455681.1991207473.1779464462.1779464463",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1787231681,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "sb-production-token-expiry",
+      "value": "1779471671",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1779522064.620869,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "sb-production-token",
+      "value": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjEifQ.eyJ1c2VySWQiOjc2Nzg3OTIsInVzZXJVdWlkIjoiZTMyNjE0NmUtMzczOS00MWNjLWEwM2ItODkzYTc5ZTU0NDc4Iiwia3ljQ2hlY2tlZCI6dHJ1ZSwianVyaXNkaWN0aW9uS2V5IjoiYnIuU1BBLkJSLnN1cGVyYmV0Lm9ubGluZSIsImlhdCI6MTc3OTQ2NDQ3MSwiZXhwIjoxNzc5NDcxNjcxLCJhdWQiOiJpbnRlcm5hbCIsImlzcyI6InN1cGVyYmV0LmJldC5iciJ9.a4txZJypp3uM-y4LjhSFfwGa-kXiX6kf2ZVSk-Ae3PoNujPz8yHmwFSKqyy5euSj3RPxhXLpbffZe457CA3I94fNNlRHUJmdw-ww-Kycpu5ZWD5aWD60weWaEd03cjoVybMWONWNMfp_uVCOsyGvsOosYFlSVWEFZQaEqM8Fz6pyIEOHtvYdZY3HJKAARjCd9hd0GK8Etaxq7QmLo4iQ8v7Ske-rVw10nV14ak8hvfbOfnzRklbB_IYmj7TCuweCugl0Dfk0l_kzBPFZUZOmW4unVG3p_65Gb1P6-fxznni3BAsPogXeASHMDW0g-WbSA4RIU8XSHtHWT1PtBePNRw",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1779522064.621125,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ct-prod-bcknd",
+      "value": "15b5945d-03f3-47e3-addd-a904f213ff8d|7678792",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1779522065.006234,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ct-prod-bcknd",
+      "value": "15b5945d-03f3-47e3-addd-a904f213ff8d|7678792",
+      "domain": ".supersocial.com.br",
+      "path": "/",
+      "expires": 1779522065.273774,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__visitor_id",
+      "value": "v1.0:10160136635:1779455688307:1779464466610",
+      "domain": "superbet.bet.br",
+      "path": "/",
+      "expires": 1811000466,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "TDCPM",
+      "value": "CAESFwoIYXBwbmV4dXMSCwikrsewxIOcPxAFEhUKBmdvb2dsZRILCNLC-qvEg5w_EAUSFgoHcnViaWNvbhILCNy98aXEg5w_EAUSFQoGY2FzYWxlEgsI1o7B6cSDnD8QBRIXCghwdWJtYXRpYxILCPS1wenEg5w_EAUSGAoJYmlkc3dpdGNoEgsIjt_B6cSDnD8QBRgFKAYyCwj21bua6YicPxAFQg8iDQgBEgkKBXRpZXIyEAFaB2V4dnRuMTJgAQ..",
+      "domain": ".adsrvr.org",
+      "path": "/",
+      "expires": 1811000466.862156,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_tgsid",
+      "value": "eyJscGQiOiJ7XCJscHVcIjpcImh0dHBzOi8vc3VwZXJiZXQuYmV0LmJyJTJGYXBvc3RhcyUyRmZ1dGVib2xcIixcImxwdFwiOlwiRXNwb3J0ZXMlMjBlJTIwYXBvc3RhcyUyMGFvJTIwdml2b1wiLFwibHByXCI6XCJcIn0iLCJwcyI6IjlhY2VhZTQ4LWYyMmYtNDU4Ny05N2M4LWI1ZTYyNGE4M2EyNyIsInB2YyI6IjQiLCJzYyI6ImNlZWQ3MTE2LTk3NGUtNDQ1Ny05NzkzLWIyZjEyZDBjNmNhODotMSIsImVjIjoiNSIsInB2IjoiMSIsInRpbSI6ImNlZWQ3MTE2LTk3NGUtNDQ1Ny05NzkzLWIyZjEyZDBjNmNhODoxNzc5NDY0NDQ4MzA5OjEwIn0=",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1779466266,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "fs_lua",
+      "value": "1.1779464466629",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1779466266,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "ttcsid_CU7NRURC77U5PP3DAJT0",
+      "value": "1779464445491::1Gi2lCOa1lY2LuA7Iwdn.2.1779464467095.1",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1813160467,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ttcsid",
+      "value": "1779464445492::-ox0c6ds_ZMUfhmEcJrC.2.1779464467097.0::1.19156.21605::0.0.0.0::0.0.0",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1813160467,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "fs_cid",
+      "value": "1.1",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1811000467,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "fs_uid",
+      "value": "#o-6N9J-eu1#86f10cfa-671f-4608-81a7-034f392b5d17:c4630f2c-7adc-4c73-b717-f71c26ec8591:1779464444033::4#ed9cd5a0##/1810991702",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1810991702,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "_ga_5WNY7XV0QK",
+      "value": "GS2.1.s1779464441$o3$g1$t1779465146$j60$l0$h0$d9o4ORtlSmAE84Xe_JYgZsTJ6bhYcz0FfJw",
+      "domain": ".superbet.bet.br",
+      "path": "/",
+      "expires": 1814025146.750005,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "https://superbet.bet.br",
+      "localStorage": [
+        {
+          "name": "users:sessionStart",
+          "value": "{\"value\":1779464467785,\"expiry\":1811000467785}"
+        },
+        {
+          "name": "ld:671979ecc963940874c4bc66:$diagnostics",
+          "value": "{\"dataSinceDate\":1779464444807,\"droppedEvents\":0,\"eventsInLastBatch\":0,\"streamInits\":[]}"
+        },
+        {
+          "name": "_fs_cid",
+          "value": "1.1"
+        },
+        {
+          "name": "g_ha",
+          "value": "f1f27e7c04ff719b8dd66582cdddbd58a65fe17b41ca4e48837c42dbb53d8aae"
+        },
+        {
+          "name": "_uetvid_exp",
+          "value": "Wed, 16 Jun 2027 13:14:40 GMT"
+        },
+        {
+          "name": "superSocialUserToken",
+          "value": "{\"AccessToken\":\"eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJzdXBlcmJldC5zb2NpYWwuYXBwIiwiZXhwIjoxNzc5NDg2MDc2LCJleHRlcm5hbF91c2VyX2lkIjoiNzY3ODc5MiIsImdyb3VwcyI6WyJreWMiXSwiaWF0IjoxNzc5NDY0NDc2LCJpc3MiOiJzdXBlcmJldC5zb2NpYWwiLCJqdGkiOiIzMm91cjByM20wYTM4cHZ2NWMwbG80MDEiLCJreWMiOnRydWUsIm5iZiI6MTc3OTQ2NDQ3Niwib3JpZ2luIjoiYmV0bGVyIiwicm9sZXMiOltdLCJ1c2VyX2lkIjoiNzY3ODc5MiIsInVzZXJfdXVpZCI6ImUzMjYxNDZlLTM3MzktNDFjYy1hMDNiLTg5M2E3OWU1NDQ3OCIsInZhcmlhbnQiOiJicnN1cGVyYmV0c29jaWFsIn0.h9tqY2nwPN60cqVjRcDhavBw5flAmfYFC0ViXRMWXSUH8KKqojevNO9ILClgHIfNxpsy0wv-XSP8sWk0XDW5ydN9281Z4yXEjkTs-4ekxbvyqW2HThan5HKoC0rN_sT7jkMGkuTmFMeMWw72hf9hzBx_uNW1e3cAl3GBA0AYRJj2Mwx6SLFFEosjdJ8im7yd3OvatfnmvnBsmExCxYd9jG_1PecFhyS-amUnQC2B6SIyXE3Aq--KQu9A__B1zmjPQCqoNKzIWUBfSgBFc6so1c4kwI6XUN9GE5WIhRS2WMVvcrYRYpWftWRerrIvcjyrWT27xS7nnX4jmmObgBG4X44qhUKNXJEOiH-fIWPrezfMwY9JsQqQkLU09RWiuHUe8CXh-gMV4td_n3GSbo6Y8oYprHudhV3ymKvGS0JBb9YQW-JwznZ7UXrbs7_jAQGHbgaYf6-MfIBoYDBEiYUaCEXU3BM-thlc7GejT1dOontM-jTNAYjgGgKXUYKQJkwd4cyEyHpt9vi8hkWfTWU0QnaIvqwGwDutquBEEYEhc3jMubUy4WsXDRTp3_XYZFgtEVidMFHmJVEmQStsCAFsPdbbtYuFeqE9zgVnS3H6YilHfK76Jv23DZu0WPwS7uT3XKglFMHUx3yRHMK6ocmFAkadTTiOts6rcHo3SxO4KYs\"}"
+        },
+        {
+          "name": "user",
+          "value": "{\"value\":{\"firstDepositDate\":\"2024-09-08T14:38:59.210Z\",\"isResident\":false,\"userId\":7678792,\"hasMadeDeposit\":true,\"username\":\"maximobet\",\"firstName\":\"ROGERIO\",\"lastName\":\"MAXIMO VIEIRA\",\"fullName\":\"ROGERIO MAXIMO VIEIRA\",\"dateOfBirth\":\"1985-07-28\",\"phone\":\"+5511995908220\",\"address\":\"R. das Alcachofras, 62\",\"city\":\"Carapicuíba\",\"county\":null,\"countryId\":32,\"postalCode\":\"06321-660\",\"email\":\"roncelio32@gmail.com\",\"registrationDate\":\"2024-09-08T14:34:01.747Z\",\"shouldVerifySms\":false,\"acceptsGeneralPrivacy\":true,\"acceptsCustomPrivacy\":true,\"acceptsContactPreferences\":[{\"id\":1,\"name\":\"Email\",\"value\":true},{\"id\":2,\"name\":\"Sms\",\"value\":true},{\"id\":3,\"name\":\"Phone\",\"value\":true},{\"id\":4,\"name\":\"WhatsApp\",\"value\":true},{\"id\":5,\"name\":\"MyMessages\",\"value\":true}],\"isVerifiedIdCard\":true,\"isTempAccount\":false,\"lastSession\":{\"country\":\"BR\",\"datetime\":\"2026-05-22T13:14:53.421Z\",\"ip\":\"177.198.134.63\"},\"locale\":\"pt-BR\",\"isVip\":false,\"userUuid\":\"e326146e-3739-41cc-a03b-893a79e54478\",\"welcomeBonus\":false,\"kycDocumentsExpired\":false,\"identityDocuments\":[{\"type\":\"IDENTITY_CARD\",\"identifier\":\"01845823346\"}],\"nationality\":\"BR\",\"preferredVertical\":\"Sports\",\"accountStatus\":\"VERIFIED\",\"sessionId\":\"15b5945d-03f3-47e3-addd-a904f213ff8d|7678792\",\"gender\":\"M\",\"limitsConsent\":true,\"balance\":{\"realMoney\":{\"total\":265.3,\"withdrawable\":265.3,\"nonWithdrawable\":0,\"reserved\":0},\"bonuses\":{\"Sport\":{\"amount\":0,\"id\":null},\"Freebet\":{\"amount\":0,\"id\":null},\"FreeSpins\":{\"amount\":0,\"id\":null},\"FreeChips\":{\"amount\":0,\"id\":null},\"Bingo\":{\"amount\":null,\"id\":null},\"Casino\":{\"amount\":0,\"id\":null},\"Virtuals\":{\"amount\":0,\"id\":null},\"CasinoBonusFunds\":{\"amount\":null,\"id\":null},\"CasinoVirtuals\":{\"amount\":null,\"id\":null},\"Cash\":{\"amount\":null,\"id\":null},\"LiveDealer\":{\"amount\":null,\"id\":null},\"HoneyToken\":{\"amount\":null,\"id\":null},\"ProfitBoostToken\":{\"amount\":null,\"id\":null}}}},\"expiry\":1811000469394}"
+        },
+        {
+          "name": "xtremepush.data",
+          "value": "{\"subscription\":true,\"page_views_last\":1779464470,\"page_views\":4,\"appkey\":\"67Fwmi_8CyHQH6KESxX-h9OfCovvGYUL\",\"user_id\":\"e326146e-3739-41cc-a03b-893a79e54478\",\"params\":{\"type\":\"web\",\"environment\":\"chrome\",\"user_id\":\"e326146e-3739-41cc-a03b-893a79e54478\",\"subscription\":true,\"language\":\"pt-BR\",\"timezone\":\"180\",\"lib_version\":\"2.2026.2\",\"user_agent\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36\",\"auth\":2,\"appkey\":\"67Fwmi_8CyHQH6KESxX-h9OfCovvGYUL\",\"id\":\"7421607477\",\"key\":\"UnbRViQ3hN5mygKu0TIprOVtHXIa0AyC\"},\"id\":\"7421607477\",\"key\":\"UnbRViQ3hN5mygKu0TIprOVtHXIa0AyC\",\"device_id\":\"XP_xMuT819RzzHPlfJqkv3jfDLgkVS5wo1C\"}"
+        },
+        {
+          "name": "_gcl_ls",
+          "value": "{\"schema\":\"gcl\",\"version\":1,\"gcl_ctr\":{\"value\":{\"value\":0,\"timeouts\":0,\"errors\":0,\"eopCount\":0,\"creationTimeMs\":1779455680621},\"expires\":1787231680621},\"gtg_load_status\":{\"status\":2,\"expires\":1779542080654}}"
+        },
+        {
+          "name": "theme:recent",
+          "value": "light"
+        },
+        {
+          "name": "_fs_dwell_passed",
+          "value": "c4630f2c-7adc-4c73-b717-f71c26ec8591"
+        },
+        {
+          "name": "experiment-engagement-service:e326146e-3739-41cc-a03b-893a79e54478",
+          "value": "{\"data\":[{\"id\":\"97435cf5-d49c-4edc-993c-71b7b998fce1\",\"status\":\"enabled\",\"group\":\"VariantA\",\"type\":\"device\",\"assignmentType\":\"bucket\"},{\"id\":\"dac7af59-50ac-4450-9152-e212891e331b\",\"status\":\"enabled\",\"group\":\"VariantA\",\"type\":\"device\",\"assignmentType\":\"bucket\"},{\"id\":\"fb4e79b3-da57-4cdd-af4f-34f3d5518266\",\"status\":\"enabled\",\"group\":\"VariantA\",\"type\":\"device\",\"assignmentType\":\"bucket\"},{\"id\":\"3a6996a8-c76c-4926-873b-f24a9f17ae1c\",\"status\":\"enabled\",\"group\":\"VariantA\",\"type\":\"player\",\"assignmentType\":\"bucket\"},{\"id\":\"4ffe201e-8b32-48d3-80c9-171efd9665bc\",\"status\":\"enabled\",\"group\":\"VariantA\",\"type\":\"player\",\"assignmentType\":\"bucket\"},{\"id\":\"5bbcb9d6-a903-4c8c-aedb-e372c616e1da\",\"status\":\"enabled\",\"group\":\"Control\",\"type\":\"player\",\"assignmentType\":\"bucket\"},{\"id\":\"7926e110-ce4e-497e-93f9-443373dc5c94\",\"status\":\"enabled\",\"group\":\"VariantA\",\"type\":\"player\",\"assignmentType\":\"bucket\"},{\"id\":\"9b32b22d-efac-4734-847d-c7f8796ac085\",\"status\":\"enabled\",\"group\":\"VariantA\",\"type\":\"player\",\"assignmentType\":\"bucket\"},{\"id\":\"9b6b0352-3956-46ff-8032-7f60c095be05\",\"status\":\"enabled\",\"group\":\"VariantA\",\"type\":\"player\",\"assignmentType\":\"bucket\"},{\"id\":\"9db3fc26-92e3-4784-962f-78ef38d8944a\",\"status\":\"enabled\",\"group\":\"VariantA\",\"type\":\"player\",\"assignmentType\":\"bucket\"},{\"id\":\"a8e0f51f-d21c-4081-81e5-a31844c39efc\",\"status\":\"enabled\",\"group\":\"VariantA\",\"type\":\"player\",\"assignmentType\":\"bucket\"},{\"id\":\"c66aec9f-d2a8-4145-83b5-e7a7995f3cea\",\"status\":\"enabled\",\"group\":\"Control\",\"type\":\"player\",\"assignmentType\":\"bucket\"},{\"id\":\"fe9f8e07-e021-40c8-be07-2e998a11127e\",\"status\":\"enabled\",\"group\":\"VariantA\",\"type\":\"player\",\"assignmentType\":\"bucket\"}],\"context\":{\"deviceId\":\"73bdd466-5e19-4019-94a0-35d3b7af6c15\",\"playerId\":\"e326146e-3739-41cc-a03b-893a79e54478\",\"platform\":\"web-desktop\",\"market\":\"br\"},\"timestamp\":1779464468114,\"version\":\"2.2.0\"}"
+        },
+        {
+          "name": "OTHER_DEVICE_INCREASE_ID",
+          "value": "5"
+        },
+        {
+          "name": "gBananaCountry",
+          "value": "https://gateway.sa-east.mkodo.io/gateway"
+        },
+        {
+          "name": "_uetvid",
+          "value": "30eae89055e011f1ae7e453437bdd9f6"
+        },
+        {
+          "name": "awswaf_token_refresh_timestamp",
+          "value": "1779464448477"
+        },
+        {
+          "name": "lastExternalReferrer",
+          "value": "empty"
+        },
+        {
+          "name": "gMango",
+          "value": "0f9871fa-c2a1-404f-b62f-49c14b0ff85a"
+        },
+        {
+          "name": "ld:66858a0f6738701030554b36:$diagnostics",
+          "value": "{\"dataSinceDate\":1779464444805,\"droppedEvents\":0,\"eventsInLastBatch\":0,\"streamInits\":[]}"
+        },
+        {
+          "name": "LOAD_DEVICE_INCREASE_ID",
+          "value": "12"
+        },
+        {
+          "name": "users:sessionExpire",
+          "value": "{\"value\":1779466271949,\"expiry\":1811000468776}"
+        },
+        {
+          "name": "_fs_uid",
+          "value": "#o-6N9J-eu1#86f10cfa-671f-4608-81a7-034f392b5d17:c4630f2c-7adc-4c73-b717-f71c26ec8591:1779464444033::4#ed9cd5a0##/1810991702"
+        },
+        {
+          "name": "gBananaTea",
+          "value": "1779464448733"
+        },
+        {
+          "name": "lastGeoLocationPingTime",
+          "value": "2026-05-22T15:41:08.752Z"
+        },
+        {
+          "name": "gBanana",
+          "value": "V0voc4zCsMiwrHMq0EsZdAEuwZz7u7NET74cbdBPnNxIyCzAGyauyeAT5zuMikUa8l6lxcqw8hiDrAsD6nvYTC86sr15pin5aPJtF3a4L0+QsfiRrEeTFg=="
+        },
+        {
+          "name": "device_id",
+          "value": "73bdd466-5e19-4019-94a0-35d3b7af6c15"
+        },
+        {
+          "name": "WEBLOGGER_CUSTOM_INCREAMENT_ID_KEY",
+          "value": "14"
+        },
+        {
+          "name": "_uetsid",
+          "value": "30eac8e055e011f1b37fd927d1a9ba41"
+        },
+        {
+          "name": "lastSuccessfulGeoVault",
+          "value": "{\"value\":{\"gatewayStatus\":\"OK\",\"distanceToBoundary\":100001,\"areaCode\":\"brSaoPaulo\",\"millisecondsToNextPing\":1800000,\"personId\":\"0f9871fa-c2a1-404f-b62f-49c14b0ff85a\",\"type\":\"OK\",\"enterAppPairing\":false,\"responseVault\":\"+rWJWuRnQ1GZpZ+MtmI7sUQuXW4SjgqtySN83z33/0ezOteBocThIE0NhAQRNSH3B9Y4NBC/6WThBDP4b6l8k2zAVg8FvyA3H0ihmMkmZc0Vv3lo9GVC8nkV0iWvE0A6Vw42J5eGd2N0fcgFiaZRvh1ddpVRmkBdX792Dk2Yyd25JG0MWp1jaik9q+mz2zW7/q5kzGqrwr+UG3mSqS2sbqLT0ULh2tgglknuZ1LnWD36JJB9vbulyYWzeCK9uv4veYpAryBCevkFqC1tDscMaft/CduFjfB3FlLRFy2uMtQNvjPjvioLFMCjRRAihot3jLYmXbMPIGrQDgFHlC3vahNtX75n6YMRIgHkRAmHCF1agaWHthB4si1j34Nt0Q5WZRM0yZQeVb61c0kb6Skgt/Hws7eX7KlWz+RFc3Rx36wun6EZxV6ilaTfdjywMORQRs7Yo/aJ697HNE5/2EYHC7uG08xl1WFZG3blVOkwBrqzx8kIuBbmwrrbTNQipBmrhYvnWBbGsojc5LJdDLL+kXLYhNtqXj24amDtNo0m6zU=\"},\"expiry\":1779471668752}"
+        },
+        {
+          "name": "ld:668589ba6738701030554afc:$diagnostics",
+          "value": "{\"dataSinceDate\":1779464444808,\"droppedEvents\":0,\"eventsInLastBatch\":0,\"streamInits\":[]}"
+        },
+        {
+          "name": "sb_advertiser_id_snapshot",
+          "value": "{\"fbp\":\"fb.2.1779455681163.680645239182585198\",\"marketingConsent\":\"C0001:1,C0002:1,C0003:1,C0004:1\"}"
+        },
+        {
+          "name": "sports::categoryIconMappings",
+          "value": "{\"1\":\"RUS\",\"2\":\"WTA\",\"3\":\"ATP\",\"4\":\"SWE\",\"5\":\"MEX\",\"6\":\"ENG\",\"7\":\"PRT\",\"8\":\"GRC\",\"9\":\"INT\",\"10\":\"FIN\",\"11\":\"SWE\",\"12\":\"INT\",\"13\":\"SWE\",\"14\":\"BJK\",\"15\":\"INT\",\"16\":\"ALB\",\"17\":\"MLT\",\"18\":\"DEU\",\"19\":\"CYP\",\"20\":\"GRC\",\"21\":\"DEU\",\"22\":\"OWG\",\"23\":\"ITF\",\"24\":\"SVK\",\"25\":\"POL\",\"26\":\"INT\",\"27\":\"DEU\",\"28\":\"ARE\",\"29\":\"ISR\",\"30\":\"RUS\",\"31\":\"INT\",\"32\":\"DNK\",\"33\":\"SVN\",\"34\":\"UKR\",\"35\":\"FRA\",\"36\":\"INT\",\"37\":\"ITF\",\"38\":\"FIN\",\"39\":\"KOR\",\"40\":\"AUS\",\"41\":\"NOR\",\"42\":\"ITA\",\"43\":\"ITA\",\"44\":\"SCO\",\"45\":\"ENG\",\"46\":\"DNK\",\"47\":\"SAU\",\"48\":\"ESP\",\"49\":\"ROU\",\"50\":\"EGY\",\"51\":\"OWG\",\"52\":\"FIN\",\"53\":\"SWE\",\"54\":\"ZAF\",\"55\":\"FIN\",\"56\":\"ITA\",\"57\":\"USA\",\"58\":\"INT\",\"59\":\"DNK\",\"60\":\"FRA\",\"61\":\"USA\",\"62\":\"QAT\",\"63\":\"IRN\",\"64\":\"BLR\",\"65\":\"CZE\",\"66\":\"TUR\",\"67\":\"POL\",\"68\":\"AUT\",\"69\":\"AUS\",\"70\":\"ECU\",\"71\":\"FIN\",\"72\":\"EST\",\"73\":\"INT\",\"74\":\"BRA\",\"75\":\"CHE\",\"76\":\"CHL\",\"77\":\"INT\",\"78\":\"VEN\",\"79\":\"MEX\",\"80\":\"OWG\",\"81\":\"DNK\",\"82\":\"RUS\",\"83\":\"VNM\",\"84\":\"AZE\",\"85\":\"CRI\",\"86\":\"HND\",\"87\":\"HKG\",\"88\":\"CHN\",\"89\":\"CZE\",\"90\":\"CAN\",\"91\":\"SRB\",\"92\":\"USA\",\"93\":\"SVK\",\"94\":\"JPN\",\"95\":\"AUT\",\"96\":\"OWG\",\"97\":\"ITA\",\"98\":\"NOR\",\"99\":\"PAK\",\"100\":\"GTM\",\"101\":\"AUT\",\"102\":\"INT\",\"103\":\"SWE\",\"104\":\"FRA\",\"105\":\"CHE\",\"106\":\"FRA\",\"107\":\"BRA\",\"108\":\"ESP\",\"109\":\"HRV\",\"110\":\"ARG\",\"111\":\"TUR\",\"112\":\"BRA\",\"113\":\"INT\",\"114\":\"BOL\",\"115\":\"CZE\",\"116\":\"SEN\",\"117\":\"BEL\",\"118\":\"CZE\",\"119\":\"DEU\",\"120\":\"DEU\",\"121\":\"POL\",\"122\":\"INT\",\"123\":\"NOR\",\"124\":\"LVA\",\"125\":\"ENG\",\"126\":\"ENG\",\"127\":\"NLD\",\"128\":\"FIN\",\"129\":\"TUR\",\"130\":\"INT\",\"131\":\"CZE\",\"132\":\"PRT\",\"133\":\"SWE\",\"134\":\"DNK\",\"135\":\"NZL\",\"136\":\"RUS\",\"137\":\"LTU\",\"138\":\"FIN\",\"139\":\"TUN\",\"140\":\"WAL\",\"141\":\"RUS\",\"142\":\"ISR\",\"143\":\"CZE\",\"144\":\"AUT\",\"145\":\"GRC\",\"146\":\"RUS\",\"147\":\"NIR\",\"148\":\"OWG\",\"149\":\"BEL\",\"150\":\"ITA\",\"151\":\"DAV\",\"153\":\"ROU\",\"154\":\"POL\",\"155\":\"HRV\",\"156\":\"PRT\",\"157\":\"DEU\",\"158\":\"NLD\",\"159\":\"HRV\",\"160\":\"CZE\",\"161\":\"ESP\",\"162\":\"TUR\",\"163\":\"INT\",\"164\":\"HUN\",\"165\":\"SLV\",\"166\":\"COL\",\"167\":\"OWG\",\"168\":\"AUT\",\"169\":\"INT\",\"170\":\"INT\",\"171\":\"ITA\",\"172\":\"ESP\",\"173\":\"GRC\",\"174\":\"SRB\",\"175\":\"SMR\",\"176\":\"SVK\",\"177\":\"HUN\",\"178\":\"HRV\",\"179\":\"ESP\",\"180\":\"SVN\",\"181\":\"FRA\",\"182\":\"JPN\",\"183\":\"ARG\",\"184\":\"CHE\",\"185\":\"ISR\",\"186\":\"MKD\",\"187\":\"POL\",\"188\":\"CHE\",\"189\":\"OWG\",\"192\":\"AUS\",\"193\":\"SWE\",\"194\":\"NOR\",\"195\":\"BGR\",\"196\":\"HUN\",\"197\":\"SVN\",\"198\":\"RUS\",\"199\":\"CAN\",\"200\":\"SVK\",\"201\":\"UKR\",\"202\":\"USA\",\"203\":\"SRB\",\"204\":\"DNK\",\"205\":\"CHALLENGER\",\"206\":\"INT\",\"207\":\"ENG\",\"208\":\"PRT\",\"210\":\"BHR\",\"211\":\"IND\",\"212\":\"IDN\",\"213\":\"LVA\",\"214\":\"GIB\",\"215\":\"CIV\",\"216\":\"KWT\",\"217\":\"INT\",\"218\":\"AND\",\"220\":\"PRY\",\"221\":\"DZA\",\"222\":\"JOR\",\"223\":\"SRB\",\"224\":\"MYS\",\"225\":\"SGP\",\"227\":\"IRL\",\"228\":\"GEO\",\"231\":\"OWG\",\"234\":\"INT\",\"235\":\"WTA\",\"236\":\"INT\",\"239\":\"INT\",\"240\":\"UZB\",\"241\":\"USA\",\"242\":\"URY\",\"243\":\"THA\",\"244\":\"SWE\",\"245\":\"KOR\",\"246\":\"PER\",\"247\":\"OMN\",\"248\":\"MAR\",\"249\":\"MNE\",\"250\":\"MDA\",\"251\":\"LUX\",\"252\":\"LTU\",\"253\":\"LIE\",\"254\":\"KAZ\",\"255\":\"JPN\",\"256\":\"ISL\",\"257\":\"GHA\",\"258\":\"FRO\",\"259\":\"EST\",\"260\":\"DNK\",\"261\":\"CHN\",\"262\":\"CAN\",\"263\":\"CMR\",\"264\":\"BIH\",\"265\":\"BLR\",\"266\":\"AUT\",\"267\":\"ARM\",\"268\":\"FIN\",\"269\":\"INT\",\"270\":\"INT\",\"271\":\"BRA\",\"272\":\"NOR\",\"273\":\"INT\",\"274\":\"INT\",\"275\":\"MEX\",\"276\":\"JPN\",\"277\":\"ITA\",\"278\":\"INT\",\"279\":\"DEU\",\"295\":\"KEN\",\"297\":\"PHL\",\"298\":\"PHL\",\"299\":\"INT\",\"300\":\"INT\",\"301\":\"INT\",\"302\":\"INT\",\"303\":\"PAN\",\"304\":\"INT\",\"305\":\"DEU\",\"306\":\"JAM\",\"307\":\"BGR\",\"308\":\"BEL\",\"309\":\"SVK\",\"310\":\"PRT\",\"311\":\"CHE\",\"312\":\"ROU\",\"313\":\"BGR\",\"315\":\"SRB\",\"316\":\"SRB\",\"317\":\"INT\",\"318\":\"INT\",\"319\":\"ROU\",\"320\":\"INT\",\"321\":\"NZL\",\"322\":\"ZAF\",\"323\":\"KOR\",\"324\":\"KAZ\",\"325\":\"SWE\",\"326\":\"KOR\",\"327\":\"ROU\",\"329\":\"AUS\",\"331\":\"ISL\",\"334\":\"HRV\",\"335\":\"AUS\",\"336\":\"TUR\",\"337\":\"INT\",\"338\":\"EST\",\"339\":\"CHN\",\"341\":\"ROU\",\"342\":\"UGA\",\"343\":\"YEM\",\"344\":\"HRV\",\"345\":\"SRB\",\"346\":\"BLR\",\"347\":\"UKR\",\"348\":\"RWA\",\"349\":\"UKR\",\"350\":\"LBN\",\"351\":\"QAT\",\"352\":\"KWT\",\"353\":\"LVA\",\"354\":\"IND\",\"355\":\"SMR\",\"356\":\"NGA\",\"357\":\"PSE\",\"359\":\"QAT\",\"360\":\"BGD\",\"361\":\"AZE\",\"362\":\"IND\",\"363\":\"CUB\",\"364\":\"ZMB\",\"365\":\"KOR\",\"366\":\"ENG\",\"367\":\"NOR\",\"368\":\"TWN\",\"369\":\"KOR\",\"370\":\"ENG\",\"372\":\"CHN\",\"373\":\"MKD\",\"374\":\"BEL\",\"375\":\"AUT\",\"376\":\"AGO\",\"377\":\"FIN\",\"379\":\"LTU\",\"380\":\"ITA\",\"381\":\"AUS\",\"382\":\"BHR\",\"384\":\"MDV\",\"386\":\"VNM\",\"387\":\"PHL\",\"389\":\"FJI\",\"390\":\"USA\",\"391\":\"PSE\",\"392\":\"RUS\",\"393\":\"INT\",\"394\":\"BEL\",\"395\":\"AZE\",\"396\":\"TZA\",\"397\":\"MYS\",\"398\":\"COL\",\"399\":\"INT\",\"400\":\"INT\",\"404\":\"PAK\",\"405\":\"NIC\",\"406\":\"DNK\",\"408\":\"MKD\",\"409\":\"KOR\",\"410\":\"BWA\",\"411\":\"SVN\",\"412\":\"CIV\",\"419\":\"INT\",\"440\":\"KOS\",\"441\":\"SDN\",\"442\":\"FRA\",\"443\":\"ISL\",\"447\":\"ISL\",\"448\":\"CHL\",\"449\":\"INT\",\"450\":\"CHE\",\"451\":\"RUS\",\"452\":\"JPN\",\"453\":\"BGD\",\"454\":\"CHN\",\"455\":\"ARG\",\"456\":\"CYP\",\"457\":\"AUS\",\"458\":\"LKA\",\"459\":\"MWI\",\"460\":\"TTO\",\"461\":\"EST\",\"462\":\"INT\",\"463\":\"ETH\",\"464\":\"BDI\",\"465\":\"IDN\",\"470\":\"PAK\",\"471\":\"INT\",\"472\":\"HKG\",\"473\":\"INT\",\"476\":\"POL\",\"477\":\"INT\",\"478\":\"POL\",\"479\":\"ROU\",\"480\":\"MLI\",\"482\":\"AUS\",\"483\":\"ZWE\",\"484\":\"INT\",\"485\":\"BRN\",\"486\":\"ESP\",\"487\":\"INT\",\"488\":\"INT\",\"489\":\"LVA\",\"490\":\"UGA\",\"491\":\"MLI\",\"494\":\"ROU\",\"495\":\"URY\",\"496\":\"HUN\",\"497\":\"RWA\",\"498\":\"NLD\",\"499\":\"VEN\",\"500\":\"SYR\",\"509\":\"AUS\",\"510\":\"ATG\",\"514\":\"TJK\",\"524\":\"INT\",\"531\":\"NAM\",\"535\":\"INT\",\"539\":\"IRN\",\"540\":\"MMR\",\"544\":\"NIC\",\"545\":\"KAZ\",\"546\":\"INT\",\"547\":\"PHL\",\"550\":\"INT\",\"551\":\"UKR\",\"552\":\"BLR\",\"553\":\"BLR\",\"554\":\"GEO\",\"556\":\"CYP\",\"557\":\"GRC\",\"558\":\"INT\",\"560\":\"THA\",\"561\":\"INT\",\"562\":\"HUN\",\"563\":\"HUN\",\"564\":\"INT\",\"565\":\"IDN\",\"566\":\"INT\",\"568\":\"MAC\",\"569\":\"ISR\",\"570\":\"UKR\",\"571\":\"INT\",\"572\":\"UKR\",\"573\":\"SVN\",\"578\":\"BLR\",\"579\":\"MKD\",\"580\":\"IRN\",\"589\":\"INT\",\"590\":\"PER\",\"592\":\"SAU\",\"600\":\"COG\",\"601\":\"TUR\",\"602\":\"BLR\",\"603\":\"GEO\",\"605\":\"SVN\",\"606\":\"HUN\",\"607\":\"INT\",\"608\":\"LTU\",\"616\":\"CYP\",\"622\":\"SYR\",\"627\":\"USA\",\"628\":\"LVA\",\"647\":\"INT\",\"648\":\"AZE\",\"649\":\"IRN\",\"651\":\"INT\",\"652\":\"SDN\",\"656\":\"SYR\",\"657\":\"SRB\",\"659\":\"INT\",\"660\":\"THA\",\"661\":\"MDA\",\"662\":\"BIH\",\"663\":\"BRA\",\"664\":\"ROU\",\"665\":\"ALB\",\"667\":\"INT\",\"669\":\"MKD\",\"674\":\"KAZ\",\"675\":\"HRV\",\"679\":\"ZWE\",\"681\":\"TUN\",\"683\":\"DZA\",\"684\":\"BRA\",\"686\":\"CUB\",\"689\":\"SVN\",\"690\":\"AUS\",\"692\":\"MDA\",\"694\":\"HRV\",\"695\":\"QAT\",\"696\":\"ITA\",\"698\":\"FIN\",\"699\":\"BIH\",\"700\":\"PER\",\"702\":\"SVK\",\"703\":\"URY\",\"704\":\"KHM\",\"705\":\"THA\",\"706\":\"BRB\",\"708\":\"IRL\",\"709\":\"INT\",\"710\":\"TWN\",\"713\":\"USA\",\"714\":\"VEN\",\"715\":\"MAR\",\"716\":\"USA\",\"718\":\"NZL\",\"720\":\"RUS\",\"721\":\"PRI\",\"724\":\"BGR\",\"726\":\"PRT\",\"729\":\"BHS\",\"731\":\"POL\",\"732\":\"MYS\",\"733\":\"HKG\",\"734\":\"INT\",\"736\":\"INT\",\"737\":\"ETH\",\"738\":\"HKG\",\"739\":\"DOM\",\"741\":\"VNM\",\"743\":\"DOM\",\"744\":\"TGO\",\"746\":\"VNM\",\"747\":\"URY\",\"748\":\"MWI\",\"750\":\"USA\",\"751\":\"GUY\",\"752\":\"AUS\",\"753\":\"VEN\",\"755\":\"MLI\",\"756\":\"TJK\",\"757\":\"SGP\",\"759\":\"SYR\",\"761\":\"INT\",\"764\":\"TTO\",\"766\":\"SDN\",\"767\":\"SYR\",\"768\":\"LKA\",\"769\":\"BWA\",\"771\":\"ARG\",\"774\":\"UGA\",\"775\":\"INT\",\"776\":\"IRL\",\"777\":\"CUB\",\"778\":\"NOR\",\"779\":\"KWT\",\"780\":\"QAT\",\"781\":\"JOR\",\"782\":\"VNM\",\"783\":\"NOR\",\"784\":\"ALB\",\"785\":\"LTU\",\"787\":\"INT\",\"788\":\"INT\",\"790\":\"UKR\",\"791\":\"NOR\",\"792\":\"IND\",\"793\":\"AFG\",\"794\":\"BHR\",\"796\":\"HTI\",\"797\":\"DZA\",\"798\":\"SAU\",\"801\":\"COL\",\"803\":\"INT\",\"804\":\"DZA\",\"805\":\"INT\",\"806\":\"CUB\",\"807\":\"BIH\",\"808\":\"INT\",\"810\":\"LBN\",\"811\":\"ABW\",\"812\":\"CAN\",\"814\":\"IRN\",\"815\":\"KOR\",\"816\":\"LVA\",\"817\":\"GTM\",\"818\":\"BGR\",\"819\":\"EST\",\"821\":\"JOR\",\"822\":\"LVA\",\"823\":\"INT\",\"824\":\"GUM\",\"825\":\"LTU\",\"829\":\"TUN\",\"830\":\"LKA\",\"832\":\"KEN\",\"833\":\"JPN\",\"834\":\"TWN\",\"836\":\"ARE\",\"837\":\"BHR\",\"839\":\"ATG\",\"841\":\"DOM\",\"842\":\"SAU\",\"845\":\"KAZ\",\"846\":\"INT\",\"851\":\"SDN\",\"852\":\"EST\",\"854\":\"ISR\",\"855\":\"QAT\",\"856\":\"JOR\",\"857\":\"CHN\",\"861\":\"RWA\",\"862\":\"LBN\",\"863\":\"CUW\",\"864\":\"IRL\",\"865\":\"RWA\",\"866\":\"CHN\",\"868\":\"NAM\",\"869\":\"CUB\",\"872\":\"USA\",\"876\":\"BGD\",\"878\":\"TWN\",\"879\":\"GMB\",\"880\":\"TUN\",\"881\":\"MNE\",\"885\":\"INT\",\"886\":\"BHR\",\"887\":\"ARM\",\"888\":\"ARE\",\"889\":\"BEN\",\"890\":\"INT\",\"891\":\"MNE\",\"894\":\"ARG\",\"895\":\"MDA\",\"896\":\"NZL\",\"897\":\"IRL\",\"898\":\"INT\",\"903\":\"ROU\",\"906\":\"IRL\",\"908\":\"DOM\",\"909\":\"MKD\",\"913\":\"KEN\",\"914\":\"SEN\",\"915\":\"MAR\",\"916\":\"INT\",\"917\":\"INT\",\"919\":\"BOL\",\"920\":\"IRQ\",\"922\":\"ITA\",\"923\":\"ZAF\",\"924\":\"GTM\",\"925\":\"GTM\",\"927\":\"INT\",\"928\":\"PER\",\"930\":\"CHN\",\"932\":\"UGA\",\"933\":\"NOR\",\"934\":\"INT\",\"936\":\"NAM\",\"938\":\"INT\",\"939\":\"TGO\",\"941\":\"MOZ\",\"943\":\"ZMB\",\"946\":\"VNM\",\"948\":\"INT\",\"949\":\"CRI\",\"950\":\"PRY\",\"954\":\"INT\",\"956\":\"CHL\",\"957\":\"BDI\",\"960\":\"PRY\",\"963\":\"INT\",\"964\":\"ARE\",\"966\":\"DEU\",\"970\":\"NLD\",\"971\":\"INT\",\"975\":\"EGY\",\"979\":\"EGY\",\"981\":\"FIN\",\"982\":\"INT\",\"986\":\"EGY\",\"987\":\"INT\",\"988\":\"VEN\",\"989\":\"INT\",\"990\":\"GEO\",\"991\":\"INT\",\"992\":\"KEN\",\"993\":\"BEL\",\"994\":\"CMR\",\"997\":\"QAT\",\"998\":\"KGZ\",\"999\":\"NPL\",\"1001\":\"KNA\",\"1004\":\"LBR\",\"1005\":\"MRT\",\"1006\":\"ZNZ\",\"1008\":\"EST\",\"1009\":\"MNE\",\"1011\":\"INT\",\"1013\":\"INT\",\"1014\":\"ARE\",\"1015\":\"NPL\",\"1016\":\"INT\",\"1018\":\"INT\",\"1020\":\"INT\",\"1023\":\"POL\",\"1024\":\"MEX\",\"1025\":\"SLV\",\"1026\":\"UKR\",\"1027\":\"SWE\",\"1028\":\"IDN\",\"1029\":\"GTM\",\"1032\":\"TJK\",\"1033\":\"BRB\",\"1034\":\"RUS\",\"1038\":\"RUS\",\"1040\":\"CHALLENGER\",\"1043\":\"THA\",\"1048\":\"SWE\",\"1056\":\"RUS\",\"1058\":\"THA\",\"1060\":\"BTN\",\"1061\":\"INT\",\"1062\":\"SWE\",\"1064\":\"RUS\",\"1066\":\"NIC\",\"1067\":\"TWN\",\"1068\":\"CZE\",\"1070\":\"CHN\",\"1071\":\"INT\",\"1073\":\"RUS\",\"1075\":\"INT\",\"1081\":\"NIC\",\"1084\":\"INT\",\"1095\":\"ARM\",\"1105\":\"SWE\",\"1109\":\"BLR\",\"1121\":\"TJK\",\"1122\":\"TJK\",\"1123\":\"TJK\",\"1126\":\"TKM\",\"1134\":\"UKR\",\"1135\":\"BRA\",\"1137\":\"CHALLENGER\",\"1140\":\"VNM\",\"1143\":\"TKM\",\"1149\":\"NIC\",\"1150\":\"INT\",\"1162\":\"TWN\",\"1164\":\"TWN\",\"1175\":\"INT\",\"1176\":\"INT\",\"1177\":\"CHN\",\"1181\":\"IDN\",\"1184\":\"BDI\",\"1185\":\"BLR\",\"1186\":\"VUT\",\"1189\":\"BLR\",\"1195\":\"INT\",\"1196\":\"FIN\",\"1197\":\"TKM\",\"1199\":\"ISL\",\"1200\":\"CZE\",\"1201\":\"BLR\",\"1202\":\"BLR\",\"1204\":\"SWE\",\"1207\":\"DEU\",\"1210\":\"DEU\",\"1212\":\"CMR\",\"1213\":\"CHE\",\"1214\":\"LCA\",\"1215\":\"INT\",\"1216\":\"CYP\",\"1217\":\"MNG\",\"1219\":\"ZMB\",\"1223\":\"ARM\",\"1224\":\"RUS\",\"1225\":\"LAO\",\"1226\":\"CAN\",\"1228\":\"JOR\",\"1229\":\"EST\",\"1230\":\"ISL\",\"1232\":\"MYS\",\"1233\":\"SLB\",\"1235\":\"NLD\",\"1236\":\"BEL\",\"1238\":\"AUT\",\"1240\":\"HUN\",\"1242\":\"THA\",\"1243\":\"INT\",\"1244\":\"INT\",\"1246\":\"ISL\",\"1247\":\"MLI\",\"1248\":\"PRT\",\"1250\":\"CRI\",\"1252\":\"KGZ\",\"1253\":\"UZB\",\"1255\":\"BGR\",\"1256\":\"GRD\",\"1257\":\"INT\",\"1259\":\"AUS\",\"1260\":\"TZA\",\"1261\":\"KAZ\",\"1263\":\"COG\",\"1264\":\"ECU\",\"1267\":\"ZAF\",\"1268\":\"USA\",\"1269\":\"INT\",\"1270\":\"MUS\",\"1273\":\"KGZ\",\"1274\":\"GIN\",\"1278\":\"IRQ\",\"1281\":\"BFA\",\"1284\":\"CIV\",\"1285\":\"HUN\",\"1286\":\"MDG\",\"1287\":\"INT\",\"1288\":\"FJI\",\"1289\":\"FIN\",\"1290\":\"POL\",\"1291\":\"INT\",\"1292\":\"INT\",\"1293\":\"INT\",\"1294\":\"INT\",\"1295\":\"INT\",\"1296\":\"INT\",\"1298\":\"NIC\",\"1301\":\"FRA\",\"1302\":\"NER\",\"1303\":\"CYM\",\"1313\":\"SLB\",\"1315\":\"USA\",\"1317\":\"INT\",\"1318\":\"INT\",\"1319\":\"ABW\",\"1320\":\"POL\",\"1321\":\"ISR\",\"1323\":\"SVN\",\"1327\":\"DMA\",\"1328\":\"INT\",\"1330\":\"ITA\",\"1331\":\"INT\",\"1332\":\"ENG\",\"1333\":\"PRY\",\"1334\":\"ZWE\",\"1336\":\"MDV\",\"1340\":\"CYP\",\"1344\":\"WSM\",\"1345\":\"LSO\",\"1347\":\"ZMB\",\"1348\":\"GRD\",\"1349\":\"MAR\",\"1350\":\"LUX\",\"1356\":\"INT\",\"1357\":\"NZL\",\"1360\":\"DMA\",\"1365\":\"GRD\",\"1380\":\"PAN\",\"1382\":\"CRI\",\"1383\":\"UKR\",\"1385\":\"PAN\",\"1387\":\"MNE\",\"1400\":\"PRI\",\"1405\":\"MLT\",\"1409\":\"UGA\",\"1421\":\"SYC\",\"1422\":\"INT\",\"1433\":\"ARE\",\"1445\":\"SLV\",\"1453\":\"DJI\",\"1458\":\"TTO\",\"1463\":\"POL\",\"1479\":\"BGR\",\"1480\":\"JAM\",\"1482\":\"UZB\",\"1484\":\"GRC\",\"1486\":\"BIH\",\"1487\":\"INT\",\"1488\":\"DEU\",\"1493\":\"LBN\",\"1498\":\"CRI\",\"1504\":\"INT\",\"1508\":\"INT\",\"1512\":\"ESP\",\"1515\":\"INT\",\"1517\":\"HRV\",\"1519\":\"OMN\",\"1521\":\"POL\",\"1525\":\"INT\",\"1530\":\"AUS\",\"1536\":\"SLE\",\"1541\":\"CUB\",\"1551\":\"IRN\",\"1552\":\"MNG\",\"1556\":\"SVK\",\"1559\":\"INT\",\"1560\":\"ESP\",\"1562\":\"IDN\",\"1564\":\"KHM\",\"1565\":\"INT\",\"1568\":\"GRC\",\"1573\":\"SVK\",\"1576\":\"GTM\",\"1581\":\"HRV\",\"1588\":\"INT\",\"1589\":\"LBN\",\"1591\":\"ENG\",\"1597\":\"CUB\",\"1609\":\"INT\",\"1614\":\"INT\",\"1616\":\"CRI\",\"1621\":\"VOI\",\"1624\":\"BRA\",\"1632\":\"FRO\",\"1639\":\"INT\",\"1647\":\"MNG\",\"1656\":\"MNG\",\"1657\":\"INT\",\"1663\":\"ARE\",\"1667\":\"INT\",\"1678\":\"INT\",\"1680\":\"INT\",\"1681\":\"INT\",\"1686\":\"INT\",\"1696\":\"INT\",\"1697\":\"INT\",\"1707\":\"INT\",\"1708\":\"INT\",\"1709\":\"INT\",\"1712\":\"INT\",\"1721\":\"CHN\",\"1726\":\"SEN\",\"1727\":\"INT\",\"1729\":\"AGO\",\"1732\":\"USA\",\"1747\":\"INT\",\"1755\":\"INT\",\"1760\":\"IRQ\",\"1768\":\"INT\",\"1778\":\"INT\",\"1779\":\"INT\",\"1781\":\"GMB\",\"1783\":\"INT\",\"1785\":\"INT\",\"1793\":\"INT\",\"1794\":\"INT\",\"1795\":\"INT\",\"1801\":\"INT\",\"1809\":\"INT\",\"1812\":\"INT\",\"1830\":\"MAC\",\"1834\":\"INT\",\"1838\":\"INT\",\"1839\":\"AGO\",\"1841\":\"INT\",\"1849\":\"INT\",\"1859\":\"INT\",\"1876\":\"CHN\",\"1877\":\"UTR\",\"1878\":\"UTR\",\"1887\":\"INT\",\"1889\":\"INT\",\"1896\":\"INT\",\"1897\":\"INT\",\"1898\":\"INT\",\"1901\":\"USA\",\"1902\":\"INT\",\"1919\":\"INT\",\"1921\":\"INT\",\"1923\":\"INT\",\"1936\":\"INT\",\"1943\":\"INT\",\"1947\":\"INT\",\"1950\":\"INT\",\"1956\":\"BRA\",\"1957\":\"INT\",\"1958\":\"INT\",\"1961\":\"INT\",\"1965\":\"INT\",\"1967\":\"INT\",\"1969\":\"INT\",\"1970\":\"INT\",\"1977\":\"INT\",\"1980\":\"INT\",\"1981\":\"INT\",\"1982\":\"PRI\",\"1984\":\"ENG\",\"1985\":\"ITA\",\"1986\":\"ESP\",\"1988\":\"INT\",\"1990\":\"INT\",\"1993\":\"INT\",\"1995\":\"INT\",\"1997\":\"INT\",\"1999\":\"TUR\",\"2001\":\"AUS\",\"2010\":\"INT\",\"2013\":\"POL\",\"2014\":\"INT\",\"2016\":\"OWG\",\"2018\":\"INT\",\"2027\":\"INT\",\"2034\":\"INT\",\"2038\":\"INT\",\"2042\":\"INT\",\"2048\":\"OWG\",\"2049\":\"OWG\",\"2050\":\"OWG\",\"2051\":\"OWG\",\"2052\":\"OWG\",\"2053\":\"OWG\",\"2054\":\"OWG\",\"2057\":\"INT\",\"2058\":\"OWG\",\"2059\":\"OWG\",\"2060\":\"USA\",\"2062\":\"INT\",\"2076\":\"INT\",\"2081\":\"INT\",\"2086\":\"INT\",\"2087\":\"INT\",\"2091\":\"INT\",\"2098\":\"INT\",\"2104\":\"INT\",\"2110\":\"INT\",\"2112\":\"INT\",\"2115\":\"INT\",\"2116\":\"INT\",\"2122\":\"INT\",\"2126\":\"INT\",\"2131\":\"KHM\",\"2132\":\"INT\",\"56760\":\"TUR\"}"
+        },
+        {
+          "name": "marketingAttributionData",
+          "value": "{\"value\":[\"1779465147|\",\"1779464454|\",\"1779464451|\",\"1779464444|\",\"1779464442|\",\"1779462323|\",\"1779455862|\",\"1779455696|\",\"1779455692|\",\"1779455676|\"],\"expiry\":1811001146870}"
+        },
+        {
+          "name": "gCornTea",
+          "value": "1779464468738"
+        },
+        {
+          "name": "PersistentDataQueue:AnalyticsEventExporter",
+          "value": "[{\"queueItemId\":\"01KS866M6J7G1PZGXAEBB5FH1N\",\"queueItemData\":{\"metadata\":{\"id\":\"01KS866M6JKMKZ7SQ9JCRY26FA\",\"timestamp\":1779465146578,\"lastRecordedScreenVisit\":\"\",\"lastRecordedScreenEvent\":\"homepage_screen_homepage_open\",\"eventPageUrl\":\"https://superbet.bet.br/\",\"ldAnonymousUserKey\":\"ANONYMOUS_USER-70\"},\"payload\":{\"name\":\"homepage-opened\",\"owner\":\"web_platform\",\"version\":\"v1\",\"destinations\":\"GA,Snowflake\"},\"context\":{\"jurisdiction\":{\"brand\":\"superbet\",\"channel\":\"online\",\"country\":\"BR\",\"domain\":\"br\",\"licence\":\"SPA\"},\"app_bundle_id\":\"br.superbet.bet.web\",\"app_version\":{\"major\":4,\"minor\":1,\"patch\":2},\"gdpr_accepted\":false,\"platform\":\"WEB_DESKTOP\",\"identities\":{\"session_id\":\"ff7bb38a-fb4c-472e-9a75-458423942596\",\"user_id\":7678792,\"user_uuid\":\"e326146e-3739-41cc-a03b-893a79e54478\",\"device_id\":\"73bdd466-5e19-4019-94a0-35d3b7af6c15\"}}}},{\"queueItemId\":\"01KS866M6RFZQHTMW4KC48YYHM\",\"queueItemData\":{\"metadata\":{\"id\":\"01KS866M6QJFHM4AJQRFZ5JZMS\",\"timestamp\":1779465146583,\"lastRecordedScreenVisit\":\"\",\"lastRecordedScreenEvent\":\"homepage_screen_homepage_open\",\"eventPageUrl\":\"https://superbet.bet.br/\",\"ldAnonymousUserKey\":\"ANONYMOUS_USER-70\"},\"payload\":{\"name\":\"session_screen_visit\",\"category\":\"clickstream\",\"owner\":\"growth\",\"version\":\"v1\",\"destinations\":\"GA,Snowflake\",\"screen_name\":\"route_home\"},\"context\":{\"jurisdiction\":{\"brand\":\"superbet\",\"channel\":\"online\",\"country\":\"BR\",\"domain\":\"br\",\"licence\":\"SPA\"},\"app_bundle_id\":\"br.superbet.bet.web\",\"app_version\":{\"major\":4,\"minor\":1,\"patch\":2},\"gdpr_accepted\":false,\"platform\":\"WEB_DESKTOP\",\"identities\":{\"session_id\":\"ff7bb38a-fb4c-472e-9a75-458423942596\",\"user_id\":7678792,\"user_uuid\":\"e326146e-3739-41cc-a03b-893a79e54478\",\"device_id\":\"73bdd466-5e19-4019-94a0-35d3b7af6c15\"}}}},{\"queueItemId\":\"01KS866MPSXNREA63X1JX60SFM\",\"queueItemData\":{\"metadata\":{\"id\":\"01KS866MPSQGWZK9XJFB43ARZR\",\"timestamp\":1779465147097,\"lastRecordedScreenVisit\":\"route_home\",\"lastRecordedScreenEvent\":\"homepage_screen_homepage_open\",\"eventPageUrl\":\"https://superbet.bet.br/\",\"ldAnonymousUserKey\":\"ANONYMOUS_USER-70\"},\"payload\":{\"name\":\"homepage_impression_section\",\"category\":\"clickstream\",\"version\":\"v2\",\"structureName\":\"homepage_impression\",\"destinations\":\"Snowflake\",\"sectionName\":\"BANNERS\"},\"context\":{\"jurisdiction\":{\"brand\":\"superbet\",\"channel\":\"online\",\"country\":\"BR\",\"domain\":\"br\",\"licence\":\"SPA\"},\"app_bundle_id\":\"br.superbet.bet.web\",\"app_version\":{\"major\":4,\"minor\":1,\"patch\":2},\"gdpr_accepted\":false,\"platform\":\"WEB_DESKTOP\",\"identities\":{\"session_id\":\"ff7bb38a-fb4c-472e-9a75-458423942596\",\"user_id\":7678792,\"user_uuid\":\"e326146e-3739-41cc-a03b-893a79e54478\",\"device_id\":\"73bdd466-5e19-4019-94a0-35d3b7af6c15\"}}}},{\"queueItemId\":\"01KS866MPSBK7W4FQW9JADA096\",\"queueItemData\":{\"metadata\":{\"id\":\"01KS866MPSV29QVNQR1G50K0KZ\",\"timestamp\":1779465147097,\"lastRecordedScreenVisit\":\"route_home\",\"lastRecordedScreenEvent\":\"homepage_screen_homepage_open\",\"eventPageUrl\":\"https://superbet.bet.br/\",\"ldAnonymousUserKey\":\"ANONYMOUS_USER-70\"},\"payload\":{\"name\":\"homepage_impression_section\",\"category\":\"clickstream\",\"version\":\"v2\",\"structureName\":\"homepage_impression\",\"destinations\":\"Snowflake\",\"sectionName\":\"QUICK_LINKS\"},\"context\":{\"jurisdiction\":{\"brand\":\"superbet\",\"channel\":\"online\",\"country\":\"BR\",\"domain\":\"br\",\"licence\":\"SPA\"},\"app_bundle_id\":\"br.superbet.bet.web\",\"app_version\":{\"major\":4,\"minor\":1,\"patch\":2},\"gdpr_accepted\":false,\"platform\":\"WEB_DESKTOP\",\"identities\":{\"session_id\":\"ff7bb38a-fb4c-472e-9a75-458423942596\",\"user_id\":7678792,\"user_uuid\":\"e326146e-3739-41cc-a03b-893a79e54478\",\"device_id\":\"73bdd466-5e19-4019-94a0-35d3b7af6c15\"}}}},{\"queueItemId\":\"01KS866MVT6ZQD5WA9BH7DMF9Q\",\"queueItemData\":{\"metadata\":{\"id\":\"01KS866MVSKEQHD0J0N3MDD6D7\",\"timestamp\":1779465147257,\"lastRecordedScreenVisit\":\"route_home\",\"lastRecordedScreenEvent\":\"homepage_screen_homepage_open\",\"eventPageUrl\":\"https://superbet.bet.br/\",\"ldAnonymousUserKey\":\"ANONYMOUS_USER-70\"},\"payload\":{\"name\":\"homepage_impression_section\",\"category\":\"clickstream\",\"version\":\"v2\",\"structureName\":\"homepage_impression\",\"destinations\":\"Snowflake\",\"sectionName\":\"SPORTS_TOP_LIVE\"},\"context\":{\"jurisdiction\":{\"brand\":\"superbet\",\"channel\":\"online\",\"country\":\"BR\",\"domain\":\"br\",\"licence\":\"SPA\"},\"app_bundle_id\":\"br.superbet.bet.web\",\"app_version\":{\"major\":4,\"minor\":1,\"patch\":2},\"gdpr_accepted\":false,\"platform\":\"WEB_DESKTOP\",\"identities\":{\"session_id\":\"ff7bb38a-fb4c-472e-9a75-458423942596\",\"user_id\":7678792,\"user_uuid\":\"e326146e-3739-41cc-a03b-893a79e54478\",\"device_id\":\"73bdd466-5e19-4019-94a0-35d3b7af6c15\"}}}}]"
+        },
+        {
+          "name": "currentNavigationContext",
+          "value": "Sports"
+        },
+        {
+          "name": "lastExternalReferrerTime",
+          "value": "1779464455851"
+        },
+        {
+          "name": "ig-joined",
+          "value": "1779455689437"
+        },
+        {
+          "name": "_fs_lua",
+          "value": "1.1779464466629"
+        },
+        {
+          "name": "_uetsid_exp",
+          "value": "Sat, 23 May 2026 13:14:40 GMT"
+        },
+        {
+          "name": "checkInData",
+          "value": "{\"value\":null,\"expiry\":1811000456553}"
+        },
+        {
+          "name": "multiBetSlip",
+          "value": "{\"purchaseType\":\"online\",\"betSlips\":[{\"version\":\"v2\",\"selections\":[],\"stake\":null,\"selectedSystems\":[],\"type\":1}]}"
+        },
+        {
+          "name": "returningUserDevice",
+          "value": "{\"value\":true,\"expiry\":1874072467787}"
+        },
+        {
+          "name": "g_br",
+          "value": "0440550500520460560570570570570570570550540490530560490441020971081151010440440440440800690780680730780710440490550550570520540530490520540530570548"
+        },
+        {
+          "name": "store",
+          "value": "{\"ui\":{\"sportOffer\":{\"search\":{\"lastSearches\":[]},\"betSlip\":{\"autoUpdateChanges\":true},\"sports\":{\"selectedTreeItems\":[]}},\"user\":{\"preferences\":{\"7678792\":{\"version\":\"v2.3.0\",\"favouriteTournaments\":[],\"favouriteMarkets\":[],\"pinnedEvents\":[],\"recentlyPlayedGames\":[],\"betslipPreferences\":{\"shouldDeleteBetslipAfterPurchase\":true,\"predefinedStakes\":[{\"value\":5,\"index\":0},{\"value\":10,\"index\":1},{\"value\":20,\"index\":2},{\"value\":50,\"index\":3}]}},\"defaultUserId\":{\"version\":\"v2.3.0\",\"favouriteTournaments\":[],\"favouriteMarkets\":[],\"pinnedEvents\":[],\"recentlyPlayedGames\":[],\"betslipPreferences\":{\"shouldDeleteBetslipAfterPurchase\":true,\"predefinedStakes\":[{\"value\":5,\"index\":0},{\"value\":10,\"index\":1},{\"value\":20,\"index\":2},{\"value\":50,\"index\":3}]}}}}}}"
+        },
+        {
+          "name": "experiment-engagement-service:73bdd466-5e19-4019-94a0-35d3b7af6c15",
+          "value": "{\"data\":[{\"id\":\"97435cf5-d49c-4edc-993c-71b7b998fce1\",\"status\":\"enabled\",\"group\":\"VariantA\",\"type\":\"device\",\"assignmentType\":\"bucket\"},{\"id\":\"dac7af59-50ac-4450-9152-e212891e331b\",\"status\":\"enabled\",\"group\":\"VariantA\",\"type\":\"device\",\"assignmentType\":\"bucket\"},{\"id\":\"fb4e79b3-da57-4cdd-af4f-34f3d5518266\",\"status\":\"enabled\",\"group\":\"VariantA\",\"type\":\"device\",\"assignmentType\":\"bucket\"}],\"context\":{\"deviceId\":\"73bdd466-5e19-4019-94a0-35d3b7af6c15\",\"platform\":\"web-desktop\",\"market\":\"br\"},\"timestamp\":1779464456798,\"version\":\"2.2.0\"}"
+        },
+        {
+          "name": "gCornHam",
+          "value": "100FF3E0B202D08D5CBBB55C96B6FD6C62300D0408088573B748AB9AF902010A"
+        },
+        {
+          "name": "cachedPing",
+          "value": "{\"value\":\"CJI695trlAdWfsbQAMU55oh9hABZI4HwD991ptFnljtVeMrBD4k10IZljhEBNIHAGKQvtaxvjgdWP8g=\",\"expiry\":1779465368752}"
+        },
+        {
+          "name": "inersc2a2k",
+          "value": "e9d7f13c2bef8394afa897929d49f006"
+        },
+        {
+          "name": "ldAnonymousUserKey",
+          "value": "ANONYMOUS_USER-70"
+        }
+      ]
+    }
+  ]
+}
