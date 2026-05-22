@@ -5,6 +5,7 @@
   "type": "global_filter",
   "params": {
     "min_edge_pct": 3,
+    "min_ev_real": 0.03,
     "min_prob": 0.30,
     "rank_by": "ev_real",
     "top_n": 30,

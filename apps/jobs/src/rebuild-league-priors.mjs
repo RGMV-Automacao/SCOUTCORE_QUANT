@@ -5,7 +5,8 @@
 // Payload por period:
 //   gols    : { n, avg_goals_total, btts_rate, over_25_rate }
 //   eventos : { n_events, avg_escanteios_total, avg_chutes_total, avg_chutes_alvo_total,
-//               avg_cartoes_total, avg_faltas_total }
+//               avg_cartoes_total, avg_faltas_total,
+//               avg_impedimentos_total, avg_defesas_total, avg_desarmes_total }
 // (eventos só preenche em FT — para HT/2T não temos splits no nível de partida sem
 // agregar bandas individualmente; fica como TODO honesto.)
 
@@ -61,7 +62,8 @@ function aggPeriod(getH, getA) {
   };
 }
 
-// Agrega eventos_faixa (FT) por partida → médias da liga.
+// Agrega `times` (modo='FT') por partida → médias da liga.
+// Inclui impedimentos/defesas direto da tabela times, e desarmes via jogadores.
 function aggEventsFT() {
   if (partidas.length === 0) return null;
   const ids = partidas.map((p) => p.id_confronto);
@@ -73,18 +75,28 @@ function aggEventsFT() {
            SUM(chutes_no_alvo) AS chutes_alvo,
            SUM(cartoes_amarelos) AS cartoes_amarelos,
            SUM(cartoes_vermelhos) AS cartoes_vermelhos,
-           SUM(faltas) AS faltas
-      FROM eventos_faixa
-     WHERE id_confronto IN (${placeholders})
+           SUM(faltas) AS faltas,
+           SUM(impedimentos) AS impedimentos,
+           SUM(defesas) AS defesas,
+           SUM(desarmes) AS desarmes
+      FROM times
+     WHERE modo = 'FT' AND id_confronto IN (${placeholders})
      GROUP BY id_confronto`).all(...ids);
   if (rows.length === 0) return null;
+  const desMap = new Map(rows.map((r) => [r.id_confronto, r.desarmes]));
   let sumEsc = 0, sumChu = 0, sumChuAlvo = 0, sumCart = 0, sumFal = 0;
+  let sumImp = 0, sumDef = 0;
+  let sumDes = 0, nDes = 0;
   for (const r of rows) {
     sumEsc += r.escanteios ?? 0;
     sumChu += r.chutes ?? 0;
     sumChuAlvo += r.chutes_alvo ?? 0;
     sumCart += (r.cartoes_amarelos ?? 0) + (r.cartoes_vermelhos ?? 0);
     sumFal += r.faltas ?? 0;
+    sumImp += r.impedimentos ?? 0;
+    sumDef += r.defesas ?? 0;
+    const d = desMap.get(r.id_confronto);
+    if (d != null) { sumDes += d; nDes += 1; }
   }
   const n = rows.length;
   return {
@@ -94,6 +106,9 @@ function aggEventsFT() {
     avg_chutes_alvo_total: sumChuAlvo / n,
     avg_cartoes_total: sumCart / n,
     avg_faltas_total: sumFal / n,
+    avg_impedimentos_total: sumImp / n,
+    avg_defesas_total: sumDef / n,
+    avg_desarmes_total: nDes > 0 ? sumDes / nDes : null,
   };
 }
 

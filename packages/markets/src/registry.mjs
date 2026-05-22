@@ -1,31 +1,51 @@
 // @scoutcore/markets/registry — catálogo canônico de mercados.
 //
+// **Escopo único: Superbet (bookline).** A partir de v2.0.0 (refactor
+// 2026-05-18) o registry só inclui mercados ofertados pela Superbet. Famílias
+// fora do whitelist (asian_handicap, htft, correct_score, escanteios_race,
+// escanteios_exato, escanteios_asian, asian_total, handicap, btts_algum_tempo,
+// btts_ambos_tempos, dnb, margem, marca*, ...) foram removidas; o motor não
+// gera mais nenhuma predição para elas.
+//
 // Convenção de market_key (canônica, ascii kebab):
 //   <familia>_<scope>_<period>_<direction>[_<line>]
 // Exemplos:
 //   gols_total_ft_over_2_5
 //   btts_total_ft_sim
+//   gols_oddeven_total_ft_par
 //   1x2_total_ft_home
-//   dupla_total_ft_1x
-//   htft_total_full_1_1
-//   asian_handicap_total_ft_home_minus_0_5
+//   dupla_total_ht_1x
 //   escanteios_total_ft_over_9_5
-//   escanteios_1x2_total_ft_home
-//   escanteios_race_total_ft_home_3
-//   chutes_alvo_total_ft_over_3_5
+//   escanteios_1x2_total_ht_home
+//   escanteios_handicap_total_ft_home_minus_2_5
+//   escanteios_oddeven_total_ft_par
+//   chutes_total_ft_over_24_5             // "Total de Finalizações"
+//   chutes_1x2_total_ft_home              // "Equipe Com Mais Finalizações"
+//   chutes_alvo_total_ft_over_8_5         // "Total de Chutes no Gol"
+//   chutes_alvo_1x2_total_ft_home         // "Equipe Com Mais Chutes no Gol"
+//   defesas_home_ft_over_2_5
+//   defesas_total_ht_over_2_5
+//   desarmes_total_ft_over_30_5
 //   cartoes_total_ft_over_3_5
+//   cartoes_1x2_total_ft_home
 //   faltas_home_ft_over_10_5
 //   impedimentos_total_ft_over_2_5
 //
-// Aqui registramos a superfície canônica submetível do produto. Engine A deriva
-// via Poisson bivariado, Engine B treina nas famílias-base e o resto sai por
-// derivação.
+// Famílias whitelist (19):
+//   1x2, dupla,
+//   gols, btts, gols_oddeven,
+//   cartoes, cartoes_1x2,
+//   chutes, chutes_1x2,
+//   chutes_alvo, chutes_alvo_1x2,
+//   defesas, desarmes,
+//   escanteios, escanteios_1x2, escanteios_handicap, escanteios_oddeven,
+//   faltas, impedimentos.
 
 const _seed = [];
 
 function reg(entry) { _seed.push(entry); }
 
-function regOverUnder({ family, scope, period, lines, since = '1.0.0' }) {
+function regOverUnder({ family, scope, period, lines, since = '2.0.0' }) {
   for (const ln of lines) {
     const tag = String(ln).replace('.', '_');
     reg({ key: `${family}_${scope}_${period.toLowerCase()}_over_${tag}`,  family, scope, period, direction: 'over',  line: ln, since });
@@ -33,8 +53,29 @@ function regOverUnder({ family, scope, period, lines, since = '1.0.0' }) {
   }
 }
 
+function regOddEven({ family, scope, period, since = '2.0.0' }) {
+  for (const dir of ['par', 'impar']) {
+    reg({ key: `${family}_${scope}_${period.toLowerCase()}_${dir}`, family, scope, period, direction: dir, line: null, since });
+  }
+}
+
+function regHandicap({ family, scope, period, lines, since = '2.0.0' }) {
+  for (const h of lines) {
+    const absTag = String(Math.abs(h)).replace('.', '_');
+    const sign = h < 0 ? 'minus' : 'plus';
+    for (const side of ['home', 'away']) {
+      reg({
+        key: `${family}_${scope}_${period.toLowerCase()}_${side}_${sign}_${absTag}`,
+        family, scope, period,
+        direction: `${side}_${sign}_${absTag}`,
+        line: h, since,
+      });
+    }
+  }
+}
+
 // ─────────────────────────────────────────────
-// GOLS
+// GOLS — over/under em total/home/away, FT/HT/2T
 // ─────────────────────────────────────────────
 regOverUnder({ family: 'gols', scope: 'total', period: 'FT', lines: [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5] });
 regOverUnder({ family: 'gols', scope: 'total', period: 'HT', lines: [0.5, 1.5, 2.5, 3.5] });
@@ -45,120 +86,133 @@ regOverUnder({ family: 'gols', scope: 'home',  period: 'HT', lines: [0.5, 1.5] }
 regOverUnder({ family: 'gols', scope: 'away',  period: 'HT', lines: [0.5, 1.5] });
 
 // ─────────────────────────────────────────────
-// BTTS
+// BTTS — sim/nao em FT e HT (Superbet expõe 1T)
 // ─────────────────────────────────────────────
 for (const period of ['FT', 'HT']) {
   for (const dir of ['sim', 'nao']) {
-    reg({ key: `btts_total_${period.toLowerCase()}_${dir}`, family: 'btts', scope: 'total', period, direction: dir, line: null, since: '1.0.0' });
+    reg({ key: `btts_total_${period.toLowerCase()}_${dir}`, family: 'btts', scope: 'total', period, direction: dir, line: null, since: '2.0.0' });
   }
 }
-// BTTS - pelo menos um tempo
-reg({ key: 'btts_algum_tempo_sim',  family: 'btts_algum_tempo',  scope: 'total', period: 'FULL', direction: 'sim', line: null, since: '1.0.0' });
-reg({ key: 'btts_algum_tempo_nao',  family: 'btts_algum_tempo',  scope: 'total', period: 'FULL', direction: 'nao', line: null, since: '1.0.0' });
 
 // ─────────────────────────────────────────────
-// 1X2 / Dupla Chance
+// GOLS ODD/EVEN — paridade da soma total de gols, FT e HT
 // ─────────────────────────────────────────────
-for (const period of ['FT', 'HT', '2T']) {
+regOddEven({ family: 'gols_oddeven', scope: 'total', period: 'FT' });
+regOddEven({ family: 'gols_oddeven', scope: 'total', period: 'HT' });
+
+// ─────────────────────────────────────────────
+// 1X2 / Dupla Chance — FT e HT (Superbet não oferece 1x2 2T)
+// ─────────────────────────────────────────────
+for (const period of ['FT', 'HT']) {
   for (const dir of ['home', 'draw', 'away']) {
-    reg({ key: `1x2_total_${period.toLowerCase()}_${dir}`, family: '1x2', scope: 'total', period, direction: dir, line: null, since: '1.0.0' });
+    reg({ key: `1x2_total_${period.toLowerCase()}_${dir}`, family: '1x2', scope: 'total', period, direction: dir, line: null, since: '2.0.0' });
   }
   for (const dir of ['1x', '12', 'x2']) {
-    reg({ key: `dupla_total_${period.toLowerCase()}_${dir}`, family: 'dupla', scope: 'total', period, direction: dir, line: null, since: '1.0.0' });
+    reg({ key: `dupla_total_${period.toLowerCase()}_${dir}`, family: 'dupla', scope: 'total', period, direction: dir, line: null, since: '2.0.0' });
   }
 }
 
 // ─────────────────────────────────────────────
-// HT/FT (intervalo / final)
+// ESCANTEIOS — over/under, 1x2, handicap, oddeven, em FT e HT
 // ─────────────────────────────────────────────
-for (const a of ['1', 'x', '2']) {
-  for (const b of ['1', 'x', '2']) {
-    reg({ key: `htft_total_full_${a}_${b}`, family: 'htft', scope: 'total', period: 'FULL', direction: `${a}_${b}`, line: null, since: '1.0.0' });
-  }
-}
-
-// Handicap asiático (linhas .5 e inteiras) — payout simplificado fica no settle
-for (const h of [-2, -1.5, -1, -0.5, +0.5, +1, +1.5, +2]) {
-  for (const lado of ['home', 'away']) {
-    const tag = `${lado}_${h < 0 ? 'minus_' + String(Math.abs(h)).replace('.', '_') : 'plus_' + String(h).replace('.', '_')}`;
-    reg({ key: `asian_handicap_total_ft_${tag}`, family: 'asian_handicap', scope: 'total', period: 'FT', direction: tag, line: h, since: '1.0.0' });
-  }
-}
-
-// ─────────────────────────────────────────────
-// ESCANTEIOS — over/under expandido + 1x2 + race + exato
-// ─────────────────────────────────────────────
-regOverUnder({ family: 'escanteios', scope: 'total', period: 'FT', lines: [7.5, 8.5, 9.5, 10.5, 11.5, 12.5, 13.5, 14.5] });
+regOverUnder({ family: 'escanteios', scope: 'total', period: 'FT', lines: [3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5, 11.5, 12.5, 13.5, 14.5, 15.5, 16.5, 17.5, 18.5] });
 regOverUnder({ family: 'escanteios', scope: 'total', period: 'HT', lines: [2.5, 3.5, 4.5, 5.5, 6.5] });
 regOverUnder({ family: 'escanteios', scope: 'home',  period: 'FT', lines: [2.5, 3.5, 4.5, 5.5, 6.5, 7.5] });
 regOverUnder({ family: 'escanteios', scope: 'away',  period: 'FT', lines: [2.5, 3.5, 4.5, 5.5, 6.5, 7.5] });
 regOverUnder({ family: 'escanteios', scope: 'home',  period: 'HT', lines: [0.5, 1.5, 2.5, 3.5, 4.5] });
 regOverUnder({ family: 'escanteios', scope: 'away',  period: 'HT', lines: [0.5, 1.5, 2.5, 3.5, 4.5] });
 
-for (const dir of ['home', 'draw', 'away']) {
-  reg({ key: `escanteios_1x2_total_ft_${dir}`, family: 'escanteios_1x2', scope: 'total', period: 'FT', direction: dir, line: null, since: '1.0.0' });
-  reg({ key: `escanteios_1x2_total_ht_${dir}`, family: 'escanteios_1x2', scope: 'total', period: 'HT', direction: dir, line: null, since: '1.0.0' });
+for (const period of ['FT', 'HT']) {
+  for (const dir of ['home', 'draw', 'away']) {
+    reg({ key: `escanteios_1x2_total_${period.toLowerCase()}_${dir}`, family: 'escanteios_1x2', scope: 'total', period, direction: dir, line: null, since: '2.0.0' });
+  }
 }
-// Race (qual time atinge primeiro N escanteios)
-for (const n of [3, 5, 7]) {
-  for (const dir of ['home', 'away', 'none']) {
-    reg({ key: `escanteios_race_total_ft_${dir}_${n}`, family: 'escanteios_race', scope: 'total', period: 'FT', direction: dir, line: n, since: '1.0.0' });
+
+regHandicap({ family: 'escanteios_handicap', scope: 'total', period: 'FT', lines: [-4.5, -3.5, -2.5, -1.5, 1.5, 2.5, 3.5, 4.5] });
+regHandicap({ family: 'escanteios_handicap', scope: 'total', period: 'FT', lines: [-5.5, 5.5], since: '2.1.1' });
+regHandicap({ family: 'escanteios_handicap', scope: 'total', period: 'HT', lines: [-2.5, -1.5, 1.5, 2.5] });
+
+regOddEven({ family: 'escanteios_oddeven', scope: 'total', period: 'FT' });
+regOddEven({ family: 'escanteios_oddeven', scope: 'total', period: 'HT' });
+
+// ─────────────────────────────────────────────
+// CHUTES (= Finalizações totais) — over/under + 1x2, FT/HT
+// ─────────────────────────────────────────────
+regOverUnder({ family: 'chutes', scope: 'total', period: 'FT', lines: [17.5, 19.5, 21.5, 23.5, 24.5, 25.5, 26.5, 27.5, 28.5, 29.5, 30.5] });
+regOverUnder({ family: 'chutes', scope: 'home',  period: 'FT', lines: [8.5, 10.5, 12.5, 13.5, 14.5, 15.5] });
+regOverUnder({ family: 'chutes', scope: 'away',  period: 'FT', lines: [8.5, 10.5, 12.5, 13.5, 14.5, 15.5] });
+regOverUnder({ family: 'chutes', scope: 'total', period: 'HT', lines: [8.5, 9.5, 10.5, 11.5, 12.5] });
+regOverUnder({ family: 'chutes', scope: 'home',  period: 'HT', lines: [3.5, 4.5, 5.5, 6.5] });
+regOverUnder({ family: 'chutes', scope: 'away',  period: 'HT', lines: [3.5, 4.5, 5.5, 6.5] });
+for (const period of ['FT', 'HT']) {
+  for (const dir of ['home', 'draw', 'away']) {
+    reg({ key: `chutes_1x2_total_${period.toLowerCase()}_${dir}`, family: 'chutes_1x2', scope: 'total', period, direction: dir, line: null, since: '2.0.0' });
   }
 }
 
 // ─────────────────────────────────────────────
-// CHUTES (todos) — total/home/away FT + HT
+// CHUTES NO GOL (= Chutes no Gol / shots on target) — over/under + 1x2, FT/HT
 // ─────────────────────────────────────────────
-regOverUnder({ family: 'chutes', scope: 'total', period: 'FT', lines: [9.5, 11.5, 13.5, 15.5, 17.5, 19.5, 21.5, 23.5, 24.5, 25.5, 26.5, 27.5, 28.5, 29.5, 30.5] });
-regOverUnder({ family: 'chutes', scope: 'home',  period: 'FT', lines: [4.5, 6.5, 8.5, 10.5, 12.5, 13.5, 14.5, 15.5] });
-regOverUnder({ family: 'chutes', scope: 'away',  period: 'FT', lines: [4.5, 6.5, 8.5, 10.5, 12.5, 13.5, 14.5, 15.5] });
-regOverUnder({ family: 'chutes', scope: 'total', period: 'HT', lines: [4.5, 5.5, 6.5, 7.5, 8.5] });
-regOverUnder({ family: 'chutes', scope: 'home',  period: 'HT', lines: [2.5, 3.5, 4.5, 5.5] });
-regOverUnder({ family: 'chutes', scope: 'away',  period: 'HT', lines: [2.5, 3.5, 4.5, 5.5] });
+regOverUnder({ family: 'chutes_alvo', scope: 'total', period: 'FT', lines: [6.5, 7.5, 8.5, 9.5, 10.5, 11.5, 12.5] });
+regOverUnder({ family: 'chutes_alvo', scope: 'home',  period: 'FT', lines: [2.5, 3.5, 4.5, 5.5, 6.5] });
+regOverUnder({ family: 'chutes_alvo', scope: 'away',  period: 'FT', lines: [2.5, 3.5, 4.5, 5.5, 6.5] });
+regOverUnder({ family: 'chutes_alvo', scope: 'total', period: 'HT', lines: [2.5, 3.5, 4.5, 5.5] });
+regOverUnder({ family: 'chutes_alvo', scope: 'home',  period: 'HT', lines: [0.5, 1.5, 2.5, 3.5] });
+regOverUnder({ family: 'chutes_alvo', scope: 'away',  period: 'HT', lines: [0.5, 1.5, 2.5, 3.5] });
+for (const period of ['FT', 'HT']) {
+  for (const dir of ['home', 'draw', 'away']) {
+    reg({ key: `chutes_alvo_1x2_total_${period.toLowerCase()}_${dir}`, family: 'chutes_alvo_1x2', scope: 'total', period, direction: dir, line: null, since: '2.0.0' });
+  }
+}
 
 // ─────────────────────────────────────────────
-// CHUTES NO GOL (chutes_alvo) — separado de chutes
+// DEFESAS DO GOLEIRO — total/home/away, FT
 // ─────────────────────────────────────────────
-regOverUnder({ family: 'chutes_alvo', scope: 'total', period: 'FT', lines: [4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5] });
-regOverUnder({ family: 'chutes_alvo', scope: 'home',  period: 'FT', lines: [1.5, 2.5, 3.5, 4.5, 5.5] });
-regOverUnder({ family: 'chutes_alvo', scope: 'away',  period: 'FT', lines: [1.5, 2.5, 3.5, 4.5, 5.5] });
-regOverUnder({ family: 'chutes_alvo', scope: 'total', period: 'HT', lines: [2.5, 3.5, 4.5] });
-regOverUnder({ family: 'chutes_alvo', scope: 'home',  period: 'HT', lines: [0.5, 1.5, 2.5] });
-regOverUnder({ family: 'chutes_alvo', scope: 'away',  period: 'HT', lines: [0.5, 1.5, 2.5] });
+regOverUnder({ family: 'defesas', scope: 'total', period: 'FT', lines: [3.5, 4.5, 5.5, 6.5, 7.5, 8.5] });
+regOverUnder({ family: 'defesas', scope: 'home',  period: 'FT', lines: [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5] });
+regOverUnder({ family: 'defesas', scope: 'away',  period: 'FT', lines: [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5] });
+regOverUnder({ family: 'defesas', scope: 'total', period: 'HT', lines: [1.5, 2.5, 3.5, 4.5] });
+regOverUnder({ family: 'defesas', scope: 'home',  period: 'HT', lines: [0.5, 1.5, 2.5, 3.5] });
+regOverUnder({ family: 'defesas', scope: 'away',  period: 'HT', lines: [0.5, 1.5, 2.5, 3.5] });
 
 // ─────────────────────────────────────────────
-// CARTOES — expandido
+// DESARMES (tackles) — total/home/away, FT
 // ─────────────────────────────────────────────
-regOverUnder({ family: 'cartoes', scope: 'total', period: 'FT', lines: [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5] });
+regOverUnder({ family: 'desarmes', scope: 'total', period: 'FT', lines: [25.5, 26.5, 27.5, 28.5, 29.5, 30.5, 31.5, 32.5, 33.5, 34.5, 35.5] });
+regOverUnder({ family: 'desarmes', scope: 'home',  period: 'FT', lines: [12.5, 13.5, 14.5, 15.5, 16.5, 17.5, 18.5, 19.5] });
+regOverUnder({ family: 'desarmes', scope: 'away',  period: 'FT', lines: [12.5, 13.5, 14.5, 15.5, 16.5, 17.5, 18.5, 19.5] });
+
+// ─────────────────────────────────────────────
+// CARTOES — total/home/away, FT/HT + 1x2 FT (Equipe Mais Cartões)
+// ─────────────────────────────────────────────
+regOverUnder({ family: 'cartoes', scope: 'total', period: 'FT', lines: [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5] });
 regOverUnder({ family: 'cartoes', scope: 'home',  period: 'FT', lines: [0.5, 1.5, 2.5, 3.5] });
 regOverUnder({ family: 'cartoes', scope: 'away',  period: 'FT', lines: [0.5, 1.5, 2.5, 3.5] });
 regOverUnder({ family: 'cartoes', scope: 'total', period: 'HT', lines: [0.5, 1.5, 2.5, 3.5] });
 regOverUnder({ family: 'cartoes', scope: 'home',  period: 'HT', lines: [0.5, 1.5] });
 regOverUnder({ family: 'cartoes', scope: 'away',  period: 'HT', lines: [0.5, 1.5] });
-for (const dir of ['home', 'draw', 'away']) {
-  reg({ key: `cartoes_1x2_total_ft_${dir}`, family: 'cartoes_1x2', scope: 'total', period: 'FT', direction: dir, line: null, since: '1.0.0' });
+for (const period of ['FT', 'HT']) {
+  for (const dir of ['home', 'draw', 'away']) {
+    reg({ key: `cartoes_1x2_total_${period.toLowerCase()}_${dir}`, family: 'cartoes_1x2', scope: 'total', period, direction: dir, line: null, since: '2.1.0' });
+  }
 }
 
 // ─────────────────────────────────────────────
-// FALTAS — expandido
+// FALTAS — total/home/away, FT
 // ─────────────────────────────────────────────
 regOverUnder({ family: 'faltas', scope: 'total', period: 'FT', lines: [17.5, 19.5, 21.5, 23.5, 25.5, 27.5] });
 regOverUnder({ family: 'faltas', scope: 'home',  period: 'FT', lines: [8.5, 10.5, 12.5, 14.5] });
 regOverUnder({ family: 'faltas', scope: 'away',  period: 'FT', lines: [8.5, 10.5, 12.5, 14.5] });
+regOverUnder({ family: 'faltas', scope: 'total', period: 'HT', lines: [8.5, 9.5, 10.5, 11.5, 12.5, 13.5] });
+regOverUnder({ family: 'faltas', scope: 'home',  period: 'HT', lines: [3.5, 4.5, 5.5, 6.5, 7.5, 8.5] });
+regOverUnder({ family: 'faltas', scope: 'away',  period: 'HT', lines: [3.5, 4.5, 5.5, 6.5, 7.5, 8.5] });
 
 // ─────────────────────────────────────────────
-// IMPEDIMENTOS
+// IMPEDIMENTOS — total/home/away, FT
 // ─────────────────────────────────────────────
 regOverUnder({ family: 'impedimentos', scope: 'total', period: 'FT', lines: [2.5, 3.5, 4.5, 5.5] });
 regOverUnder({ family: 'impedimentos', scope: 'home',  period: 'FT', lines: [0.5, 1.5, 2.5] });
 regOverUnder({ family: 'impedimentos', scope: 'away',  period: 'FT', lines: [0.5, 1.5, 2.5] });
-
-// ─────────────────────────────────────────────
-// DEFESAS DO GOLEIRO
-// ─────────────────────────────────────────────
-regOverUnder({ family: 'defesas', scope: 'total', period: 'FT', lines: [4.5, 5.5, 6.5, 7.5, 8.5] });
-regOverUnder({ family: 'defesas', scope: 'home',  period: 'FT', lines: [1.5, 2.5, 3.5, 4.5] });
-regOverUnder({ family: 'defesas', scope: 'away',  period: 'FT', lines: [1.5, 2.5, 3.5, 4.5] });
 
 // ────────── Index/exports ──────────
 
@@ -194,9 +248,32 @@ function buildMarketKeyAliases() {
   return Object.freeze(aliases);
 }
 
-export const MARKETS_VERSION = '1.3.0';
+export const MARKETS_VERSION = '2.1.1';
 export const MARKETS = _seed.slice();
 export const MARKET_KEY_ALIASES = buildMarketKeyAliases();
+
+/** Whitelist canônica das famílias Superbet (escopo único v2.0.0). */
+export const WHITELIST_FAMILIES = Object.freeze([
+  '1x2', 'dupla',
+  'gols', 'btts', 'gols_oddeven',
+  'cartoes', 'cartoes_1x2',
+  'chutes', 'chutes_1x2',
+  'chutes_alvo', 'chutes_alvo_1x2',
+  'defesas', 'desarmes',
+  'escanteios', 'escanteios_1x2', 'escanteios_handicap', 'escanteios_oddeven',
+  'faltas', 'impedimentos',
+]);
+const _whitelistSet = new Set(WHITELIST_FAMILIES);
+
+export function isWhitelistedFamily(family) {
+  return _whitelistSet.has(family);
+}
+
+export function assertWhitelistedFamily(family, ctx = 'family') {
+  if (!_whitelistSet.has(family)) {
+    throw new Error(`whitelist_violation:${ctx}:${family}`);
+  }
+}
 
 export function canonicalizeMarketKey(key) {
   if (!key) return key;

@@ -12,15 +12,16 @@
 
 Antes de tocar qualquer linha de UI, o sistema precisa ter dados. Sem dados, nenhum teste de UI é válido.
 
-### 0.1 — Popular o scout.db
+### 0.1 — Popular o banco único (`SCOUT_DB`)
 
 Execute na raiz do projeto, **nesta ordem exata**:
 
 ```bash
-npm run setup:copy-legacy       # copia opta.db → scout.db
+npm run extraction:migrate      # cria/atualiza schema do banco único
+npm run single-db:copy          # opcional: importa legado em ambiente novo
 npm run setup:wipe-state        # limpa tabelas legadas do motor
 npm run setup:migrate           # roda migrações
-node apps/jobs/src/rebuild-team-profiles.mjs  # reconstrói team_profiles (sem npm script)
+npm run profiles:rebuild       # reconstrói team_profile_v2 + league_priors
 npm run setup:replay            # backfill histórico (pode demorar horas)
 ```
 
@@ -230,9 +231,9 @@ Cada linha é uma dupla:
 - Seta expansível: ao clicar, expande e mostra as duas legs individuais com `market_key`, odd, EV%, prob
 
 **Como construir duplas a partir da API:**
-- Chamar `GET /v1/runs/:id/strategy/family_filter` ou `combo_scored`
-- Agrupar resultados por `match_id`
-- Para cada `match_id` com ≥2 legs, pegar os 2 de maior EV — essa é a dupla
+- Chamar `POST /v1/runs/:id/strategy/duplas`
+- O runner `duplas` já agrupa por `match_id`, rejeita contradições, aplica gates por leg e retorna `combo_ev`
+- Considerar elegível apenas dupla com `combo_ev >= combo_ev_min` e legs com EV real acima de `min_leg_ev_real`
 
 #### 4.2 — Seção de Simples / Top picks (parte inferior)
 
@@ -240,6 +241,7 @@ Tabela com colunas: `Rank | Família | Período | Mercado | Odd | EV% | Tier | S
 
 - Máximo 7 picks
 - `Selecionado` = badge verde se o pick está em algum ticket Yankee
+- A API correta é `POST /v1/runs/:id/strategy/singles-ev`; o runner filtra por `ev_real >= min_ev_real` além do edge mínimo
 
 #### 4.3 — Nome da aba
 
@@ -645,7 +647,7 @@ Quando `scout=false` ou falhou:
 O dev só pode considerar entregue quando **todos** os itens abaixo estiverem marcados:
 
 **Backend / Dados**
-- [ ] `setup:replay` executado — `scout.db` tem `team_profiles` e `league_priors`
+- [ ] `setup:replay` executado — `SCOUT_DB` tem `team_profiles` e `league_priors`
 - [ ] Engine B rodando — `engine_b.available: true` no audit
 - [ ] Ao menos um run do dia atual com `certified: true` e zero warnings de dados
 

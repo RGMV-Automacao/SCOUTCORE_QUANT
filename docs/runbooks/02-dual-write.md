@@ -1,5 +1,7 @@
 # Runbook 02 — Dual-write FutMax → scout.db
 
+> Obsoleto desde 2026-05-17. O runtime do SCOUTCORE passou a operar com `SCOUT_DB=data/scout_extraction.db` como banco único. Este runbook fica apenas como registro histórico do fluxo anterior.
+
 ## Objetivo
 Ativar a gravação espelhada das tabelas core (`partidas`, `eventos_faixa`, `odds`, `odds_historico`) do FutMax (opta.db legacy) para `scout.db` (motor SCOUTCORE), liga a liga.
 
@@ -52,16 +54,14 @@ Resultado esperado: `[smoke] OK ✅` + cleanup. Repetir com `DUAL_WRITE_LEAGUES=
    - Setar `DUAL_WRITE_LEAGUES=brasileirao` no `.env` do FutMax.
    - Rodar o smoke test acima.
    - Disparar a extração de uma rodada via UI / scheduler normal.
-   - Validar com sync-check (passo abaixo).
+  - Historicamente, a validação era feita com sync-check (passo abaixo).
 2. **Demais ligas: validação manual via UI.** Adicionar uma liga por vez ao csv conforme o usuário confirmar pela interface visual que `partidas`/`eventos_faixa`/`odds` estão chegando ao scout.db.
 3. Quando todas as ligas-alvo passarem 7 dias consecutivos sem drift, considerar o dual-write de regime estável e iniciar o replay-bootstrap do motor.
 
-## Validação via sync-check
-```pwsh
-cd C:\Users\Rogerio\Desktop\RGMV_PROJETOS\SCOUTCORE_QUANT
-node apps/jobs/src/sync-check.mjs
-```
-Critério de sucesso por liga ativa: drift = 0 em `partidas`, `eventos_faixa`, `odds`, `odds_historico` (tolerância pequena no `MAX(criado_em)` por causa de timing de transação cross-db).
+## Validação via sync-check (histórico)
+O script `apps/jobs/src/sync-check.mjs` foi removido no cutover para banco único. Este passo não deve ser executado no runtime atual.
+
+Critério histórico de sucesso por liga ativa: drift = 0 em `partidas`, `eventos_faixa`, `odds`, `odds_historico` (tolerância pequena no `MAX(criado_em)` por causa de timing de transação cross-db).
 
 ## Rollback
 - `DUAL_WRITE_LEAGUES=` → desliga sem deploy.

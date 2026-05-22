@@ -23,12 +23,16 @@ const OUTCOME_ALIASES = Object.freeze({
   '1': '1', 'x': 'X', 'X': 'X', '2': '2',
   '1x': '1X', '1X': '1X', '12': '12', 'x2': 'X2', 'X2': 'X2',
   'gol': 'gol', 'semgol': 'semgol', 'sem gol': 'semgol',
+  // v2.0.0 — ímpar/par
+  'par': 'par', 'even': 'par', 'pares': 'par',
+  'ímpar': 'impar', 'impar': 'impar', 'odd': 'impar', 'ímpares': 'impar', 'impares': 'impar',
 });
 
 const VALID_OUTCOMES = new Set([
   'mais', 'menos', 'sim', 'nao',
   '1', 'X', '2', '1X', '12', 'X2',
   'gol', 'semgol',
+  'par', 'impar',
 ]);
 
 /**
@@ -44,6 +48,18 @@ function normalizeOutcome(raw) {
   // Fallback: check direct (case-sensitive for X)
   if (VALID_OUTCOMES.has(trimmed)) return trimmed;
   if (VALID_OUTCOMES.has(raw.trim())) return raw.trim();
+  return null;
+}
+
+function normalizeLabelOutcome(raw, meta, homeTeam, awayTeam) {
+  const direct = normalizeOutcome(raw);
+  if (direct) return direct;
+  if (meta?.type !== 'label' || !meta?.labels?.includes('1') || !meta?.labels?.includes('2')) return null;
+  const value = String(raw ?? '').trim().toLowerCase();
+  if (!value) return null;
+  if (value === 'empate') return 'X';
+  if (homeTeam && value === homeTeam.toLowerCase().trim()) return '1';
+  if (awayTeam && value === awayTeam.toLowerCase().trim()) return '2';
   return null;
 }
 
@@ -89,7 +105,7 @@ function resolveHeading(heading, teamTab, homeTeam, awayTeam) {
     if (m) {
       const teamName = m[1].trim();
       const scope = resolveTeamScope(teamName, homeTeam, awayTeam);
-      return { family: dyn.family, scope, period: dyn.period, type: dyn.type, labels: dyn.labels };
+      return { family: dyn.family, scope, period: dyn.period, type: dyn.type, labels: dyn.labels, canonical_heading: dyn.canonical_heading };
     }
   }
 
@@ -149,7 +165,7 @@ function parseRawEntries(rawEntries, context) {
     }
 
     // Normalize outcome
-    const outcome = normalizeOutcome(rawOutcome);
+    const outcome = normalizeLabelOutcome(rawOutcome, meta, homeTeam, awayTeam);
     if (!outcome) {
       skipped.push({ reason: 'invalid_outcome', rawOutcome, heading, entry });
       continue;
@@ -190,7 +206,7 @@ function parseRawEntries(rawEntries, context) {
     const record = {
       run_id:       runId,
       match_id:     matchId,
-      heading,
+      heading:       meta.canonical_heading || heading,
       line:         meta.type === 'label' ? null : line,
       line_str:     meta.type === 'label' ? null : lineStr,
       outcome,
@@ -198,6 +214,7 @@ function parseRawEntries(rawEntries, context) {
       family:       meta.family,
       scope:        meta.scope,
       period:       meta.period,
+      odd_uuid:     entry.oddUuid || null,
       section_name: sectionName || null,
       team_tab:     teamTab || null,
     };

@@ -32,6 +32,18 @@ describe('correlation.mjs — Bet Builder correlation penalties', () => {
     assert.equal(correlationFactor(a, b), 0.87);
   });
 
+  it('semantic pair: dupla + gols same period gets a harsher penalty', () => {
+    const a = leg({ family: 'dupla', period: 'FT', direction: 'x2' });
+    const b = leg({ family: 'gols', period: 'FT', direction: 'under' });
+    assert.equal(correlationFactor(a, b), 0.65);
+  });
+
+  it('semantic pair: 1x2 + gols cross period gets a harsher penalty', () => {
+    const a = leg({ family: '1x2', period: 'HT', direction: 'away' });
+    const b = leg({ family: 'gols', period: 'FT', direction: 'under' });
+    assert.equal(correlationFactor(a, b), 0.78);
+  });
+
   it('CAT-D: diff family, same period → 0.885', () => {
     const a = leg({ family: 'escanteios', period: 'FT' });
     const b = leg({ family: 'gols', period: 'FT' });

@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-const db = new Database('data/scout.db', { readonly: true });
+const db = new Database(process.env.SCOUT_DB || 'data/scout_extraction.db', { readonly: true });
 
 console.log('\n=== Settlement por result ===');
 const res = db.prepare(`SELECT result, COUNT(*) n FROM prediction GROUP BY result`).all();

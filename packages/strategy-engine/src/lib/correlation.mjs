@@ -19,9 +19,25 @@ export const DEFAULT_CORRELATION_PENALTIES = {
   same_family_same_dir_cross_period:  0.73,
   same_family_diff_dir_cross_period:  0.85,
   same_family_same_period_diff_scope: 0.87,
+  result_goal_same_period:            0.65,
+  result_goal_cross_period:           0.78,
   diff_family_same_period:            0.885,
   diff_family_cross_period:           0.97,
 };
+
+const RESULT_FAMILIES = new Set(['1x2', 'dupla', 'dnb']);
+const GOAL_SCRIPT_FAMILIES = new Set(['gols', 'btts']);
+
+function normalizedFamily(family) {
+  return family === 'resultado' ? '1x2' : family === 'dupla_chance' ? 'dupla' : family;
+}
+
+function isResultGoalPair(aFamily, bFamily) {
+  return (
+    (RESULT_FAMILIES.has(aFamily) && GOAL_SCRIPT_FAMILIES.has(bFamily)) ||
+    (RESULT_FAMILIES.has(bFamily) && GOAL_SCRIPT_FAMILIES.has(aFamily))
+  );
+}
 
 /**
  * Classifica o par (a, b) e retorna o fator de correlação.
@@ -31,7 +47,9 @@ export const DEFAULT_CORRELATION_PENALTIES = {
  * @returns {number}  Fator multiplicador (0.73 a 1.0)
  */
 export function correlationFactor(a, b, penalties = DEFAULT_CORRELATION_PENALTIES) {
-  const sameFamily  = a.family === b.family;
+  const familyA = normalizedFamily(a.family);
+  const familyB = normalizedFamily(b.family);
+  const sameFamily  = familyA === familyB;
   const samePeriod  = a.period === b.period;
   const sameDir     = a.direction === b.direction;
   const sameScope   = a.scope === b.scope;
@@ -44,6 +62,9 @@ export function correlationFactor(a, b, penalties = DEFAULT_CORRELATION_PENALTIE
   }
   if (sameFamily && samePeriod && !sameScope) {
     return penalties.same_family_same_period_diff_scope;
+  }
+  if (isResultGoalPair(familyA, familyB)) {
+    return samePeriod ? penalties.result_goal_same_period : penalties.result_goal_cross_period;
   }
   if (!sameFamily && samePeriod) {
     return penalties.diff_family_same_period;

@@ -16,7 +16,7 @@
 //   --dry-run     calcula tudo mas não escreve
 //
 // Saídas:
-//   data/scout.db :: isotonic_blob (refit completo — DELETE + INSERT)
+//   data/scout_extraction.db :: isotonic_blob (refit completo — DELETE + INSERT)
 //   audit/backtest/fit_isotonic_summary.csv
 
 import Database from 'better-sqlite3';
@@ -26,7 +26,9 @@ import path from 'node:path';
 import { fit, saveIsotonicBlob } from '@scoutcore/isotonic';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.resolve(__dirname, '..', '..', 'data', 'scout.db');
+const DB_PATH = process.env.SCOUT_DB
+  ? path.resolve(process.env.SCOUT_DB)
+  : path.resolve(__dirname, '..', '..', 'data', 'scout_extraction.db');
 const OUT_DIR = path.resolve(__dirname, '..', '..', 'audit', 'backtest');
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
@@ -38,6 +40,7 @@ const DRY        = !!args['dry-run'];
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
+db.pragma('busy_timeout = 60000');
 
 // 1) Cutoff temporal
 const total = db.prepare(`SELECT COUNT(*) c FROM backtest_outcomes`).get().c;

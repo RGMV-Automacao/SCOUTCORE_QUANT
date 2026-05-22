@@ -14,6 +14,7 @@
 // Sanity gates: drop slots com fair_prob fora de [0.02, 0.98].
 
 import { getCuringaGovernance } from '@scoutcore/quality-gates';
+import { isWhitelistedFamily } from '@scoutcore/markets';
 
 const SANITY = { minProb: 0.02, maxProb: 0.98 };
 const CURINGA_GOVERNANCE = getCuringaGovernance();
@@ -70,6 +71,15 @@ export function computeWeights(calib, family) {
  * @param {string|null} [args.liga]
  */
 export function combine({ slotsA, slotsB = null, weightAOverride = null, calibMap = null, liga = null } = {}) {
+  // v2.0.0 — Filtro whitelist: descarta slots cuja família é conhecida e está fora do whitelist Superbet.
+  // Slots sem `family` (legado/testes) passam; serão classificados a jusante por inferFamily.
+  const _wlFilter = (s) => {
+    const fam = s.family ?? inferFamily(s.market_key);
+    if (!fam || fam === 'unknown') return true;
+    return isWhitelistedFamily(fam);
+  };
+  slotsA = (slotsA || []).filter(_wlFilter);
+  if (slotsB) slotsB = slotsB.filter(_wlFilter);
   if (!slotsB || slotsB.length === 0) {
     return slotsA.map((s) => ({
       ...s,
@@ -163,6 +173,9 @@ export function combine({ slotsA, slotsB = null, weightAOverride = null, calibMa
       scope: sb.scope ?? 'total',
       period: sb.period ?? 'FT',
       fair_prob: sb.fair_prob,
+      // Sem A, raw = saida do produtor B (ja exposta como fair_prob_raw pela bridge,
+      // mas garantimos aqui para B-only que vier de outras fontes).
+      fair_prob_raw: sb.fair_prob_raw ?? sb.fair_prob,
       fair_odd: sb.fair_prob > 0 ? +(1 / sb.fair_prob).toFixed(4) : null,
       certified: false,
       source: 'engine_b_only',

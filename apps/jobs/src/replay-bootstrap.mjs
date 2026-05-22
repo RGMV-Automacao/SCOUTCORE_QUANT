@@ -64,7 +64,7 @@ function selectMatches(db, { liga, since, until, limit }) {
 }
 
 export async function runReplay(opts = {}) {
-  const dbPath = process.env.SCOUT_DB || resolve(process.cwd(), 'data', 'scout.db');
+  const dbPath = process.env.SCOUT_DB || resolve(process.cwd(), 'data', 'scout_extraction.db');
   const db = new Database(dbPath);
   const repo = new SqliteMatchRepository(dbPath);
   const engines = parseEngines(opts.engines);

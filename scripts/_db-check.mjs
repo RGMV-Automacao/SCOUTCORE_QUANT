@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-const db = new Database('data/scout.db', { readonly: true, fileMustExist: true });
+const db = new Database(process.env.SCOUT_DB || 'data/scout_extraction.db', { readonly: true, fileMustExist: true });
 
 // Contagens básicas
 const counts = {

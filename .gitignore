@@ -29,6 +29,7 @@ data/*.db-shm
 data/*.sqlite
 data/snapshots/
 data/exports/
+data/_archive/
 
 # Python
 __pycache__/
@@ -59,9 +60,13 @@ _tmp_*
 tmp_*
 *.out
 .pids
+.refactor-archive-path
+datetime
 
 # Local scratch / DB / one-off artifacts
 scratch/
+audit/refactor-superbet/
+audit/**/pre-truncate-*/
 scout.db
 final_certified_resp.json
 diag_sidecar.py

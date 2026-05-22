@@ -3,7 +3,7 @@
 //
 // Roda engine-a sobre cada partida histórica usando perfis ROLLING pré-jogo
 // (backtest_team_profiles + backtest_league_priors) e persiste todos os
-// ~576 slots em backtest_predictions.
+// ~598 slots em backtest_predictions.
 //
 // Sem calibração e sem isotonic: queremos fair_prob_raw do modelo para
 // posteriormente medir Brier/Reliability e treinar as próprias curvas.
@@ -20,12 +20,15 @@ import path from 'node:path';
 import { predict as predictA, ENGINE_A_VERSION } from '@scoutcore/engine-a';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.resolve(__dirname, '..', '..', 'data', 'scout.db');
+const DB_PATH = process.env.SCOUT_DB
+  ? path.resolve(process.env.SCOUT_DB)
+  : path.resolve(__dirname, '..', '..', 'data', 'scout_extraction.db');
 
 const args = parseArgs(process.argv.slice(2));
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
+db.pragma('busy_timeout = 60000');
 
 console.log(`[predictions] engine-a v${ENGINE_A_VERSION}`);
 console.log('[predictions] limpando backtest_predictions...');

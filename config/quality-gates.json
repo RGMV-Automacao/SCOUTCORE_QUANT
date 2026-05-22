@@ -276,7 +276,9 @@
     "max_stake_per_day_brl": 60,
     "max_consecutive_reds": 5,
     "max_drawdown_day_pct": 20,
-    "price_drift_max_pct": 8
+    "price_drift_max_pct": 8,
+    "favorable_price_drift_warn_pct": 25,
+    "min_actual_combo_ev": -0.01
   },
   "drift_monitor": {
     "enabled": true,

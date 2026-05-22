@@ -11,6 +11,7 @@
     "odd_combo_exception": 3.80,
     "odd_leg_range": [1.20, 2.10],
     "edge_min_pct": 2,
+    "combo_ev_min": 0,
     "builder_discount": 0.854,
     "builder_discount_min_legs": 3,
     "design": "bibd",

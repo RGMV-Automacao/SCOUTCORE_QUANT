@@ -94,12 +94,37 @@ describe('Strategy Engine E2E', () => {
     // Todos devem ter edge ≥ 3
     for (const pick of result.picks) {
       assert.ok(pick.edge_pct >= 3, `pick edge ${pick.edge_pct} < 3`);
+      assert.ok(pick.ev_real >= 0.03, `pick ev_real ${pick.ev_real} < 0.03`);
       assert.ok(pick.market_odd != null, 'must have market_odd');
     }
     // Phantom (null odd) deve estar excluído
     assert.ok(!result.picks.some((p) => p.match_id === 'm4' && p.market_odd == null));
     // Não certificado deve estar excluído
     assert.ok(!result.picks.some((p) => p.certified === false));
+  });
+
+  it('singles-ev: rejects stale positive edge when recalculated EV is negative', async () => {
+    const result = await applyStrategy('singles-ev', [
+      makeSlot({
+        match_id: 'stale-edge',
+        market_key: 'stale_edge_negative_ev',
+        fair_prob: 0.40,
+        market_odd: 2.00,
+        edge_pct: 9.0,
+        certified: true,
+      }),
+      makeSlot({
+        match_id: 'valid-edge',
+        market_key: 'valid_positive_ev',
+        fair_prob: 0.60,
+        market_odd: 2.00,
+        edge_pct: 9.0,
+        certified: true,
+      }),
+    ]);
+
+    assert.equal(result.picks.some((pick) => pick.market_key === 'stale_edge_negative_ev'), false);
+    assert.equal(result.picks.some((pick) => pick.market_key === 'valid_positive_ev'), true);
   });
 
   it('seguros: only prob ≥ 85%', async () => {

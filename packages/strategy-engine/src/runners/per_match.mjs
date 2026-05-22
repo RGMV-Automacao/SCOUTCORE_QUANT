@@ -9,6 +9,8 @@
  *   odd_combo_range          [min, max] da odd combinada
  *   odd_leg_range            [min, max] da odd individual
  *   edge_min_pct             Edge mínimo por leg
+ *   min_leg_ev_real          EV real mínimo por leg
+ *   combo_ev_min             EV real mínimo da combinação
  *   require_different_families  Se true, legs devem ter famílias distintas
  *   rank_by                  'ev_sum_pct' | 'prob_geo' | 'edge_sum'
  *   top_n                    Máximo de combos retornados (total)
@@ -79,6 +81,8 @@ export function run(slots, params = {}) {
   const oddRange  = params.odd_combo_range ?? [1.50, 10.0];
   const legRange  = params.odd_leg_range ?? [1.10, 3.00];
   const minEdge   = params.edge_min_pct ?? 0;
+  const minLegEv  = params.min_leg_ev_real ?? -Infinity;
+  const comboEvMin = params.combo_ev_min ?? -Infinity;
   const diffFam   = params.require_different_families ?? false;
   const rankBy    = params.rank_by ?? 'ev_sum_pct';
   const topN      = params.top_n ?? 20;
@@ -88,6 +92,7 @@ export function run(slots, params = {}) {
     if (!s.certified) return false;
     if (s.market_odd == null || s.market_odd <= 1) return false;
     if ((s.edge_pct ?? 0) < minEdge) return false;
+    if (evReal(s) < minLegEv) return false;
     if (s.market_odd < legRange[0] || s.market_odd > legRange[1]) return false;
     return true;
   });
@@ -133,6 +138,8 @@ export function run(slots, params = {}) {
       // Probabilidade conjunta
       let jointProb = 1;
       for (const l of legs) jointProb *= (l.fair_prob ?? 0.5);
+      const comboEv = (jointProb * comboOdd) - 1;
+      if (comboEv < comboEvMin) continue;
 
       const evSum = legs.reduce((s, l) => s + (l.edge_pct ?? 0), 0);
       const rank = comboRankValue(legs, rankBy);
@@ -146,6 +153,7 @@ export function run(slots, params = {}) {
         n_legs: legs.length,
         combo_odd: +comboOdd.toFixed(3),
         joint_prob: +jointProb.toFixed(4),
+        combo_ev: +comboEv.toFixed(4),
         ev_sum_pct: +evSum.toFixed(2),
         rank_value: +rank.toFixed(4),
         legs: legs.map((l) => ({

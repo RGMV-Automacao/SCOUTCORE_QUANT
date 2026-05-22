@@ -60,29 +60,66 @@ function loadPredictionRows(db, run_id) {
            p.family, p.scope, p.period, p.direction, p.line,
            p.market_key, p.fair_prob, p.market_odd, p.edge_pct,
            p.confidence, p.certified, p.result, p.actual_value, p.settled_at,
-           COALESCE(m.home, pt.home_team) AS home,
-           COALESCE(m.away, pt.away_team) AS away
+           p.provenance,
+           pt.home_team AS home,
+           pt.away_team AS away
     FROM prediction p
-    LEFT JOIN match m    ON p.match_id = m.id
-    LEFT JOIN partidas pt ON p.match_id = pt.id_confronto
+    LEFT JOIN partidas pt
+      ON REPLACE(p.match_id, 'statsline:', '') = pt.id_confronto
     WHERE p.run_id = ?
     ORDER BY p.edge_pct DESC NULLS LAST
   `).all(run_id);
 }
 
+function parseJsonSafe(text) {
+  if (!text) return null;
+  if (typeof text === 'object') return text;
+  try { return JSON.parse(text); } catch { return null; }
+}
+
+function enrichPredictionRows(rows) {
+  return rows.map((row) => {
+    const provenance = parseJsonSafe(row.provenance);
+    const oddMeta = provenance?.odd ?? null;
+    const fairProb = Number(row.fair_prob);
+    const marketOdd = row.market_odd == null ? null : Number(row.market_odd);
+    const fairOdd = Number.isFinite(fairProb) && fairProb > 0 ? +(1 / fairProb).toFixed(4) : null;
+    const evPct = Number.isFinite(fairProb) && Number.isFinite(marketOdd) && marketOdd > 0
+      ? +((fairProb * marketOdd - 1) * 100).toFixed(2)
+      : null;
+    const edgePp = Number.isFinite(fairProb) && Number.isFinite(marketOdd) && marketOdd > 0
+      ? +((fairProb - (1 / marketOdd)) * 100).toFixed(2)
+      : null;
+    return {
+      ...row,
+      certified: Boolean(row.certified),
+      provenance,
+      sb_market: oddMeta?.mercado ?? null,
+      sb_selection: oddMeta?.selecao ?? null,
+      sb_line: oddMeta?.linha ?? null,
+      fair_odd: fairOdd,
+      ev_pct: evPct,
+      edge_pp: edgePp,
+    };
+  });
+}
+
 function summarizePredictionRows(run_id, rows, backfilled = 0) {
-  const green   = rows.filter((r) => r.result === 'green').length;
-  const red     = rows.filter((r) => r.result === 'red').length;
-  const pending = rows.filter((r) => !r.result).length;
+  const enrichedRows = enrichPredictionRows(rows);
+  const green   = enrichedRows.filter((r) => r.result === 'green').length;
+  const red     = enrichedRows.filter((r) => r.result === 'red').length;
+  const voided  = enrichedRows.filter((r) => r.result === 'void').length;
+  const pending = enrichedRows.filter((r) => r.result == null).length;
   return {
     run_id,
-    count: rows.length,
+    count: enrichedRows.length,
     green,
     red,
+    void: voided,
     pending,
-    certified: rows.filter((r) => r.certified).length,
+    certified: enrichedRows.filter((r) => r.certified).length,
     backfilled_from_slots: backfilled,
-    rows,
+    rows: enrichedRows,
   };
 }
 
@@ -191,11 +228,12 @@ export function registerSettleAdmin(app, { repo }) {
       `SELECT result, COUNT(*) n FROM prediction WHERE run_id = ? GROUP BY result`
     ).all(run_id);
     if (!rows.length) return reply.code(404).send({ error: 'not_found' });
-    const summary = { run_id, total: 0, green: 0, red: 0, pending: 0 };
+    const summary = { run_id, total: 0, green: 0, red: 0, void: 0, pending: 0 };
     for (const r of rows) {
       summary.total += r.n;
       if (r.result === 'green') summary.green = r.n;
       else if (r.result === 'red') summary.red = r.n;
+      else if (r.result === 'void') summary.void = r.n;
       else summary.pending += r.n;
     }
     summary.green_rate = summary.total > 0

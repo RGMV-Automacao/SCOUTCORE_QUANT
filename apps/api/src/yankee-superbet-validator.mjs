@@ -1,5 +1,4 @@
-import { fetchOddsRecords } from '@scoutcore/superbet-scraper';
-import { buildLookupPlan } from '../../../scripts/lib/superbet-mapping.mjs';
+import { fetchOddsRecords, fetchOddsRecordsByEventId, recordToPortugueseRow } from '@scoutcore/superbet-scraper';
 
 const BMB_BASE = 'https://production-superbet-bmb.freetls.fastly.net/betbuilder/v2';
 const BMB_HEADERS = {
@@ -9,14 +8,21 @@ const BMB_HEADERS = {
   'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
 };
 
-function normalizeText(value) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/,/g, '.')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
+const DEFAULT_HTTP_TIMEOUT_MS = Math.max(1000, Number(process.env.SCOUTCORE_BOOKLINE_HTTP_TIMEOUT_MS || process.env.SCOUTCORE_SB_HTTP_TIMEOUT_MS || 5000));
+const DEFAULT_EVENT_RETRIES = Math.max(0, Number(process.env.SCOUTCORE_BOOKLINE_EVENT_RETRIES || process.env.SCOUTCORE_SB_EVENT_RETRIES || 0));
+const DEFAULT_VALIDATE_CONCURRENCY = Math.max(1, Number(process.env.SCOUTCORE_SB_VALIDATE_CONCURRENCY || 12));
+
+function timeoutController(timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return { controller, clear: () => clearTimeout(timer) };
+}
+
+function compactError(error) {
+  const message = error?.name === 'AbortError'
+    ? 'timeout'
+    : String(error?.message || error || 'unknown_error');
+  return message.replace(/https?:\/\/\S+/g, '<url>').replace(/\s+/g, '_').slice(0, 120);
 }
 
 function extractEventId(urlOrPath) {
@@ -25,87 +31,48 @@ function extractEventId(urlOrPath) {
   return match ? (match[1] || match[2] || match[3]) : null;
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url, { headers: BMB_HEADERS });
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`http_${response.status}:${text.slice(0, 200)}`);
-  }
+function buildEventUrl(eventId) {
+  const normalized = String(eventId || '').trim();
+  return normalized ? `https://superbet.bet.br/odds/futebol/evento-${normalized}` : null;
+}
+
+async function fetchJson(url, { timeoutMs = DEFAULT_HTTP_TIMEOUT_MS } = {}) {
+  const timeout = timeoutController(timeoutMs);
   try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error(`invalid_json:${text.slice(0, 120)}`);
+    const response = await fetch(url, { headers: BMB_HEADERS, signal: timeout.controller.signal });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`http_${response.status}:${text.slice(0, 200)}`);
+    }
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`invalid_json:${text.slice(0, 120)}`);
+    }
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error(`timeout_${timeoutMs}ms`);
+    throw error;
+  } finally {
+    timeout.clear();
   }
 }
 
-async function fetchCatalog(eventId) {
-  return fetchJson(`${BMB_BASE}/getBetbuilderMarketsForMatch?match_id=${eventId}&lang=pt-BR&target=SB_BR`);
-}
-
-async function fetchSga(eventId, oddUuids) {
+async function fetchSga(eventId, oddUuids, { timeoutMs = DEFAULT_HTTP_TIMEOUT_MS } = {}) {
   const joined = encodeURIComponent(oddUuids.join(','));
-  return fetchJson(`${BMB_BASE}/getSgaOddPrice?match_id=${eventId}&selected_odds_uuids=${joined}&lang=pt-BR&target=SB_BR`);
+  return fetchJson(`${BMB_BASE}/getSgaOddPrice?match_id=${eventId}&selected_odds_uuids=${joined}&lang=pt-BR&target=SB_BR`, { timeoutMs });
 }
 
-function matchesEqOrLike(name, rule) {
-  const normalizedName = normalizeText(name);
-  if (!rule) return false;
-  if (rule.eq != null) return normalizedName === normalizeText(rule.eq);
-  if (rule.like != null) {
-    const needle = normalizeText(String(rule.like).replace(/%/g, ''));
-    return needle ? normalizedName.includes(needle) : false;
-  }
-  return false;
-}
-
-function findMarket(markets, plan) {
-  const list = Array.isArray(markets) ? markets : [];
-  const direct = list.find((market) => matchesEqOrLike(market?.name, plan?.mercadoEqOrLike));
-  if (direct) return direct;
-  return null;
-}
-
-function selectionMatches(odd, selection) {
-  const target = normalizeText(selection);
-  if (!target) return false;
-  const names = [odd?.name, odd?.description].map(normalizeText).filter(Boolean);
-  return names.some((value) => value === target);
-}
-
-function findOdd(market, plan) {
-  const odds = Array.isArray(market?.odds) ? market.odds : [];
-  const direct = odds.find((odd) => selectionMatches(odd, plan.selecao));
-  if (direct) return direct;
-
-  const targetSelection = normalizeText(plan.selecao);
-  const targetLine = normalizeText(plan.linha);
-  if (targetSelection || targetLine) {
-    const bySpec = odds.find((odd) => {
-      const name = normalizeText(odd?.name);
-      const description = normalizeText(odd?.description);
-      const specifiers = odd?.specifiers ?? {};
-      const total = normalizeText(specifiers.total);
-      const hcp = normalizeText(specifiers.hcp);
-      const selectionOk = targetSelection
-        ? (name === targetSelection || description === targetSelection || name.includes(targetSelection))
-        : true;
-      const lineOk = targetLine
-        ? [name, description, total, hcp].some((value) => value && value.includes(targetLine))
-        : true;
-      return selectionOk && lineOk;
-    });
-    if (bySpec) return bySpec;
-  }
-
-  if (targetSelection === 'x') {
-    return odds.find((odd) => /^(x|empate)$/.test(normalizeText(odd?.name))) ?? null;
-  }
-  if (targetSelection === '1' || targetSelection === '2') {
-    const nonDraw = odds.filter((odd) => !/^(x|empate)$/.test(normalizeText(odd?.name)));
-    if (nonDraw.length >= 2) return targetSelection === '1' ? nonDraw[0] : nonDraw[nonDraw.length - 1];
-  }
-
-  return null;
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await mapper(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 function boardCacheKey(board) {
@@ -121,8 +88,21 @@ function buildSlotMap(slots) {
   return map;
 }
 
+function findParsedOdd(records, slot) {
+  const list = Array.isArray(records) ? records : [];
+  const matches = list.filter((record) => record?.market_key === slot.market_key && Number(record?.odd) > 1);
+  if (matches.length === 0) return null;
+  matches.sort((a, b) => Number(b?.odd ?? 0) - Number(a?.odd ?? 0));
+  return matches[0];
+}
+
+function expectedBoardCombo(comboByMatchId, matchId) {
+  const combo = comboByMatchId.get(matchId);
+  return combo && typeof combo === 'object' ? combo : null;
+}
+
 function expectedBoardOdd(boardSlots, comboByMatchId, matchId) {
-  const comboOdd = comboByMatchId.get(matchId);
+  const comboOdd = expectedBoardCombo(comboByMatchId, matchId)?.combo_odd;
   if (Number.isFinite(Number(comboOdd)) && Number(comboOdd) > 1) return Number(comboOdd);
   const legOdds = boardSlots.map((slot) => Number(slot?.market_odd)).filter((odd) => Number.isFinite(odd) && odd > 1);
   if (legOdds.length === boardSlots.length && legOdds.length > 0) {
@@ -138,12 +118,120 @@ function buildDrift(expectedOdd, actualOdd) {
   return Number((((expected - actual) / expected) * 100).toFixed(2));
 }
 
-async function resolveEventContext({ repo, slot, urlStmt }) {
-  const fromDb = urlStmt.get(slot.home, slot.away, slot.date);
+function buildEventContextStmt(db) {
+  const columns = new Set(
+    db.prepare('PRAGMA table_info(odds)').all().map((row) => String(row?.name || '').toLowerCase())
+  );
+
+  if (columns.has('source_event_id')) {
+    const byMatchId = columns.has('id_confronto')
+      ? db.prepare(`
+          SELECT source_event_id
+          FROM odds
+          WHERE id_confronto = ?
+            AND source_event_id IS NOT NULL
+            AND trim(source_event_id) <> ''
+          LIMIT 1
+        `)
+      : null;
+    const byLeagueDateTeams = columns.has('liga')
+      ? db.prepare(`
+          SELECT source_event_id
+          FROM odds
+          WHERE liga = ?
+            AND data_jogo = ?
+            AND home_team = ?
+            AND away_team = ?
+            AND source_event_id IS NOT NULL
+            AND trim(source_event_id) <> ''
+          LIMIT 1
+        `)
+      : null;
+    const byDateTeams = db.prepare(`
+      SELECT source_event_id
+      FROM odds
+      WHERE home_team = ?
+        AND away_team = ?
+        AND data_jogo = ?
+        AND source_event_id IS NOT NULL
+        AND trim(source_event_id) <> ''
+      LIMIT 1
+    `);
+    return {
+      get(slot) {
+        const matchId = String(slot?.match_id ?? slot?.opta_match_id ?? '').trim();
+        if (byMatchId && matchId) {
+          const row = byMatchId.get(matchId);
+          if (row?.source_event_id) return row;
+        }
+        if (byLeagueDateTeams && slot?.liga) {
+          const row = byLeagueDateTeams.get(slot.liga, slot.date, slot.home, slot.away);
+          if (row?.source_event_id) return row;
+        }
+        return byDateTeams.get(slot.home, slot.away, slot.date);
+      },
+    };
+  }
+
+  if (columns.has('url_partida')) {
+    const byMatchId = columns.has('id_confronto')
+      ? db.prepare(`
+          SELECT url_partida
+          FROM odds
+          WHERE id_confronto = ?
+            AND url_partida IS NOT NULL
+            AND trim(url_partida) <> ''
+          LIMIT 1
+        `)
+      : null;
+    const byLeagueDateTeams = columns.has('liga')
+      ? db.prepare(`
+          SELECT url_partida
+          FROM odds
+          WHERE liga = ?
+            AND data_jogo = ?
+            AND home_team = ?
+            AND away_team = ?
+            AND url_partida IS NOT NULL
+            AND trim(url_partida) <> ''
+          LIMIT 1
+        `)
+      : null;
+    const byDateTeams = db.prepare(`
+      SELECT url_partida
+      FROM odds
+      WHERE home_team = ?
+        AND away_team = ?
+        AND data_jogo = ?
+        AND url_partida IS NOT NULL
+        AND trim(url_partida) <> ''
+      LIMIT 1
+    `);
+    return {
+      get(slot) {
+        const matchId = String(slot?.match_id ?? slot?.opta_match_id ?? '').trim();
+        if (byMatchId && matchId) {
+          const row = byMatchId.get(matchId);
+          if (row?.url_partida) return row;
+        }
+        if (byLeagueDateTeams && slot?.liga) {
+          const row = byLeagueDateTeams.get(slot.liga, slot.date, slot.home, slot.away);
+          if (row?.url_partida) return row;
+        }
+        return byDateTeams.get(slot.home, slot.away, slot.date);
+      },
+    };
+  }
+
+  throw new Error('odds_table_missing_source_event_id_or_url_partida');
+}
+
+async function resolveEventContext({ slot, eventStmt }) {
+  const fromDb = eventStmt.get(slot);
   const dbUrl = fromDb?.url_partida || null;
-  const dbEventId = extractEventId(dbUrl);
+  const dbEventId = String(fromDb?.source_event_id || extractEventId(dbUrl) || '').trim() || null;
   if (dbEventId) {
-    return { event_id: dbEventId, url_partida: dbUrl, source: 'odds_table', warnings: [] };
+    return { event_id: dbEventId, url_partida: dbUrl || buildEventUrl(dbEventId), source: 'odds_table', warnings: [] };
   }
 
   try {
@@ -167,7 +255,18 @@ async function resolveEventContext({ repo, slot, urlStmt }) {
   }
 }
 
-async function validateBoard({ board, slotMap, comboByMatchId, caches, repo, urlStmt, maxDropPct }) {
+async function validateBoard({
+  board,
+  slotMap,
+  comboByMatchId,
+  caches,
+  eventStmt,
+  maxDropPct,
+  maxFavorableDriftPct,
+  minActualComboEv,
+  httpTimeoutMs,
+  eventRetries,
+}) {
   const slots = [];
   for (const leg of board?.legs || []) {
     const slot = slotMap.get(`${board.match_id}::${leg.market_key}`);
@@ -183,8 +282,11 @@ async function validateBoard({ board, slotMap, comboByMatchId, caches, repo, url
       warnings: [],
       legs: [],
       event_id: null,
+      url_partida: null,
       expected_combo_odd: null,
+      expected_combo_ev: null,
       actual_combo_odd: null,
+      actual_combo_ev: null,
       drift_pct: null,
     };
   }
@@ -192,7 +294,7 @@ async function validateBoard({ board, slotMap, comboByMatchId, caches, repo, url
   const matchMeta = slots[0];
   let eventCtx = caches.events.get(board.match_id);
   if (!eventCtx) {
-    eventCtx = await resolveEventContext({ repo, slot: matchMeta, urlStmt });
+    eventCtx = await resolveEventContext({ slot: matchMeta, eventStmt });
     caches.events.set(board.match_id, eventCtx);
   }
 
@@ -206,61 +308,78 @@ async function validateBoard({ board, slotMap, comboByMatchId, caches, repo, url
       warnings,
       legs: [],
       event_id: null,
+      url_partida: eventCtx.url_partida,
       expected_combo_odd: expectedBoardOdd(slots, comboByMatchId, board.match_id),
+      expected_combo_ev: expectedBoardCombo(comboByMatchId, board.match_id)?.combo_ev ?? null,
       actual_combo_odd: null,
+      actual_combo_ev: null,
       drift_pct: null,
     };
   }
 
-  let catalog = caches.catalogs.get(eventCtx.event_id);
-  if (!catalog) {
-    catalog = await fetchCatalog(eventCtx.event_id);
-    caches.catalogs.set(eventCtx.event_id, catalog);
+  let eventOdds = caches.catalogs.get(eventCtx.event_id);
+  if (!eventOdds) {
+    try {
+      eventOdds = await fetchOddsRecordsByEventId({
+        eventId: eventCtx.event_id,
+        home: matchMeta.home,
+        away: matchMeta.away,
+        timeoutMs: httpTimeoutMs,
+        retries: eventRetries,
+      });
+    } catch (error) {
+      return {
+        match_id: board.match_id,
+        match: `${matchMeta.home} x ${matchMeta.away}`,
+        status: 'error',
+        gaps: [{ market_key: null, reason: `catalog_fetch_error:${compactError(error)}` }],
+        warnings,
+        legs: [],
+        event_id: eventCtx.event_id,
+        url_partida: eventCtx.url_partida,
+        expected_combo_odd: expectedBoardOdd(slots, comboByMatchId, board.match_id),
+        expected_combo_ev: expectedBoardCombo(comboByMatchId, board.match_id)?.combo_ev ?? null,
+        actual_combo_odd: null,
+        actual_combo_ev: null,
+        drift_pct: null,
+      };
+    }
+    caches.catalogs.set(eventCtx.event_id, eventOdds);
   }
+  warnings.push(...(eventOdds?.warnings || []));
 
   const legs = [];
   const gaps = [];
   for (const slot of slots) {
-    const plans = buildLookupPlan(slot.market_key, slot.home, slot.away);
-    if (plans == null) {
-      gaps.push({ market_key: slot.market_key, reason: 'unmapped_in_motor_catalog' });
-      continue;
-    }
-    if (plans.length === 0) {
-      gaps.push({ market_key: slot.market_key, reason: 'mapped_but_invalid_line' });
-      continue;
-    }
-
-    let resolved = null;
-    for (const plan of plans) {
-      const market = findMarket(catalog?.markets, plan);
-      if (!market) continue;
-      const odd = findOdd(market, plan);
-      if (!odd) continue;
-      resolved = {
-        market_key: slot.market_key,
-        status: 'ok',
-        market_name: market.name,
-        selection_name: odd.name,
-        expected_market_odd: slot.market_odd ?? null,
-        actual_market_odd: Number(odd.price ?? null),
-        price_diff: Number.isFinite(Number(slot.market_odd)) && Number.isFinite(Number(odd.price))
-          ? Number((Number(odd.price) - Number(slot.market_odd)).toFixed(4))
-          : null,
-        odd_uuid: odd.uuid,
-      };
-      break;
-    }
-
-    if (!resolved) {
+    const resolvedRecord = findParsedOdd(eventOdds?.records, slot);
+    if (!resolvedRecord) {
       gaps.push({ market_key: slot.market_key, reason: 'market_or_selection_missing_in_superbet' });
       continue;
     }
 
-    legs.push(resolved);
+    if (!resolvedRecord.odd_uuid) {
+      gaps.push({ market_key: slot.market_key, reason: 'odd_uuid_missing_in_superbet_record' });
+      continue;
+    }
+
+    const row = recordToPortugueseRow(resolvedRecord);
+    const actualOdd = Number(resolvedRecord.odd ?? null);
+    legs.push({
+      market_key: slot.market_key,
+      status: 'ok',
+      market_name: resolvedRecord.section_name || resolvedRecord.heading,
+      selection_name: row?.selecao ?? resolvedRecord.outcome ?? null,
+      expected_market_odd: slot.market_odd ?? null,
+      actual_market_odd: Number.isFinite(actualOdd) ? actualOdd : null,
+      price_diff: Number.isFinite(Number(slot.market_odd)) && Number.isFinite(actualOdd)
+        ? Number((actualOdd - Number(slot.market_odd)).toFixed(4))
+        : null,
+      odd_uuid: resolvedRecord.odd_uuid,
+    });
   }
 
   const expectedComboOdd = expectedBoardOdd(slots, comboByMatchId, board.match_id);
+  const expectedCombo = expectedBoardCombo(comboByMatchId, board.match_id);
   if (gaps.length > 0) {
     return {
       match_id: board.match_id,
@@ -270,8 +389,11 @@ async function validateBoard({ board, slotMap, comboByMatchId, caches, repo, url
       warnings,
       legs,
       event_id: eventCtx.event_id,
+      url_partida: eventCtx.url_partida,
       expected_combo_odd: expectedComboOdd,
+      expected_combo_ev: expectedCombo?.combo_ev ?? null,
       actual_combo_odd: null,
+      actual_combo_ev: null,
       drift_pct: null,
     };
   }
@@ -279,17 +401,42 @@ async function validateBoard({ board, slotMap, comboByMatchId, caches, repo, url
   const quoteKey = `${eventCtx.event_id}::${legs.map((leg) => leg.odd_uuid).sort().join(',')}`;
   let quote = caches.quotes.get(quoteKey);
   if (!quote) {
-    quote = await fetchSga(eventCtx.event_id, legs.map((leg) => leg.odd_uuid));
+    try {
+      quote = await fetchSga(eventCtx.event_id, legs.map((leg) => leg.odd_uuid), { timeoutMs: httpTimeoutMs });
+    } catch (error) {
+      return {
+        match_id: board.match_id,
+        match: `${matchMeta.home} x ${matchMeta.away}`,
+        status: 'error',
+        gaps: [{ market_key: null, reason: `quote_fetch_error:${compactError(error)}` }],
+        warnings,
+        legs,
+        event_id: eventCtx.event_id,
+        url_partida: eventCtx.url_partida,
+        expected_combo_odd: expectedComboOdd,
+        expected_combo_ev: expectedCombo?.combo_ev ?? null,
+        actual_combo_odd: null,
+        actual_combo_ev: null,
+        drift_pct: null,
+      };
+    }
     caches.quotes.set(quoteKey, quote);
   }
 
   const actualComboOdd = Number(quote?.price ?? null);
   const driftPct = buildDrift(expectedComboOdd, actualComboOdd);
+  const actualComboEv = buildActualComboEv(expectedCombo, actualComboOdd);
   if (quote?.status !== 'ACTIVE' || quote?.combinationBettingStatus !== 'ACTIVE') {
     gaps.push({ market_key: null, reason: `quote_inactive:${quote?.status || 'unknown'}/${quote?.combinationBettingStatus || 'unknown'}` });
   }
   if (driftPct != null && driftPct > maxDropPct) {
     gaps.push({ market_key: null, reason: `price_drift_combo:${driftPct}%>${maxDropPct}%` });
+  }
+  if (isActualComboEvBelowMin(actualComboEv, minActualComboEv)) {
+    gaps.push({ market_key: null, reason: `actual_ev_combo:${Number((actualComboEv * 100).toFixed(2))}%<${Number((minActualComboEv * 100).toFixed(2))}%` });
+  }
+  if (driftPct != null && driftPct < -maxFavorableDriftPct) {
+    warnings.push(`favorable_price_drift_combo:${Math.abs(driftPct)}%>${maxFavorableDriftPct}%`);
   }
 
   return {
@@ -300,34 +447,69 @@ async function validateBoard({ board, slotMap, comboByMatchId, caches, repo, url
     warnings,
     legs,
     event_id: eventCtx.event_id,
+    url_partida: eventCtx.url_partida,
     expected_combo_odd: expectedComboOdd,
+    expected_combo_ev: expectedCombo?.combo_ev ?? null,
     actual_combo_odd: Number.isFinite(actualComboOdd) ? actualComboOdd : null,
+    actual_combo_ev: actualComboEv,
     drift_pct: driftPct,
   };
 }
 
-export async function validateYankeeAgainstSuperbet({ repo, run, yankee, maxDropPct = 8 } = {}) {
+export async function validateYankeeAgainstSuperbet({
+  repo,
+  run,
+  yankee,
+  maxDropPct = 8,
+  maxFavorableDriftPct = 25,
+  minActualComboEv = 0,
+  httpTimeoutMs = DEFAULT_HTTP_TIMEOUT_MS,
+  eventRetries = DEFAULT_EVENT_RETRIES,
+  concurrency = DEFAULT_VALIDATE_CONCURRENCY,
+  validationCache = null,
+} = {}) {
   const tickets = Array.isArray(yankee?.tickets) ? yankee.tickets : [];
   const comboByMatchId = new Map(
-    (yankee?.board?.ready_combos || []).map((combo) => [combo.match_id ?? combo.opta_match_id, combo.combo_odd])
+    (yankee?.board?.ready_combos || []).map((combo) => [combo.match_id ?? combo.opta_match_id, combo])
   );
   const slotMap = buildSlotMap(run?.slots || []);
-  const caches = {
+  const caches = validationCache ?? {
     events: new Map(),
     catalogs: new Map(),
     quotes: new Map(),
   };
-  const urlStmt = repo.db.prepare(`
-    SELECT url_partida
-    FROM odds
-    WHERE home_team = ?
-      AND away_team = ?
-      AND data_jogo = ?
-      AND url_partida IS NOT NULL
-      AND trim(url_partida) <> ''
-    ORDER BY odd DESC
-    LIMIT 1
-  `);
+  if (!caches.events) caches.events = new Map();
+  if (!caches.catalogs) caches.catalogs = new Map();
+  if (!caches.quotes) caches.quotes = new Map();
+  const eventStmt = buildEventContextStmt(repo.db);
+
+  const uniqueBoards = [];
+  const seenBoardKeys = new Set();
+  for (const ticket of tickets) {
+    for (const board of ticket.boards || []) {
+      const cacheKey = boardCacheKey(board);
+      if (seenBoardKeys.has(cacheKey)) continue;
+      seenBoardKeys.add(cacheKey);
+      if (caches.quotes.has(`board:${cacheKey}`)) continue;
+      uniqueBoards.push({ cacheKey, board });
+    }
+  }
+
+  await mapWithConcurrency(uniqueBoards, concurrency, async ({ cacheKey, board }) => {
+    const boardResult = await validateBoard({
+      board,
+      slotMap,
+      comboByMatchId,
+      caches,
+      eventStmt,
+      maxDropPct,
+      maxFavorableDriftPct,
+      minActualComboEv,
+      httpTimeoutMs,
+      eventRetries,
+    });
+    caches.quotes.set(`board:${cacheKey}`, boardResult);
+  });
 
   const ticketResults = [];
   const sampleGaps = [];
@@ -336,6 +518,8 @@ export async function validateYankeeAgainstSuperbet({ repo, run, yankee, maxDrop
   let ticketsOk = 0;
   let ticketsFailed = 0;
   let gapsTotal = 0;
+  let warningsTotal = 0;
+  let actualEvNegativeBoards = 0;
 
   for (const ticket of tickets) {
     const boards = [];
@@ -348,15 +532,20 @@ export async function validateYankeeAgainstSuperbet({ repo, run, yankee, maxDrop
           slotMap,
           comboByMatchId,
           caches,
-          repo,
-          urlStmt,
+          eventStmt,
           maxDropPct,
+          maxFavorableDriftPct,
+          minActualComboEv,
+          httpTimeoutMs,
+          eventRetries,
         });
         caches.quotes.set(`board:${cacheKey}`, boardResult);
       }
       boards.push(boardResult);
       if (boardResult.status === 'ok') boardsOk++;
       else boardsFailed++;
+      if (isActualComboEvBelowMin(boardResult.actual_combo_ev, minActualComboEv)) actualEvNegativeBoards++;
+      warningsTotal += boardResult.warnings?.length || 0;
       for (const gap of boardResult.gaps || []) {
         gapsTotal++;
         if (sampleGaps.length < 8) {
@@ -401,8 +590,24 @@ export async function validateYankeeAgainstSuperbet({ repo, run, yankee, maxDrop
       boards_ok: boardsOk,
       boards_failed: boardsFailed,
       gaps_total: gapsTotal,
+      warnings_total: warningsTotal,
+      actual_ev_negative_boards: actualEvNegativeBoards,
     },
     sample_gaps: sampleGaps,
     tickets: ticketResults,
   };
+}
+
+function buildActualComboEv(combo, actualOdd) {
+  const jointProb = Number(combo?.joint_prob);
+  const odd = Number(actualOdd);
+  if (!Number.isFinite(jointProb) || !Number.isFinite(odd) || jointProb <= 0 || odd <= 1) return null;
+  return Number(((jointProb * odd) - 1).toFixed(4));
+}
+
+export function isActualComboEvBelowMin(actualComboEv, minActualComboEv = 0) {
+  const actual = Number(actualComboEv);
+  const min = Number(minActualComboEv);
+  if (!Number.isFinite(actual) || !Number.isFinite(min)) return false;
+  return actual < min;
 }

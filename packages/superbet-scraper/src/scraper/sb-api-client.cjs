@@ -93,10 +93,10 @@ async function fetchEventList({ tournamentId, date, sportId = SPORT_ID_FOOTBALL 
  * @param {number|string} eventId
  * @returns {Promise<object>}
  */
-async function fetchEventDetails(eventId) {
+async function fetchEventDetails(eventId, options = {}) {
   if (!eventId) throw new Error('eventId required');
   const url = `${API_BASE}/events/${encodeURIComponent(eventId)}`;
-  const json = await fetchJson(url);
+  const json = await fetchJson(url, options);
   // Normaliza: API retorna { error, dataIn, data: [event] }
   if (json && Array.isArray(json.data) && json.data[0]) return json.data[0];
   if (json && Array.isArray(json) && json[0]) return json[0];

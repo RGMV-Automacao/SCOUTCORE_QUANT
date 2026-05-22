@@ -1,8 +1,10 @@
 # Runbook: Boot inicial do SCOUTCORE_QUANT
 
+> Estado atual: o runtime opera em **banco único**. `SCOUT_DB` deve apontar para `data/scout_extraction.db`. As seções antigas de dual-write neste runbook estão obsoletas.
+
 ## Pré-requisitos
 
-- [ ] `opta.db` existe em `OPTA_LEGACY_DB` (default: `C:\Users\Rogerio\Desktop\RGMV_PROJETOS\SOLUCAO_IA\opta-extractor\db\opta.db`)
+- [ ] DB legado existe em `STATSLINE_LEGACY_DB`
 - [ ] FutMax extractor parado durante a cópia inicial (evitar inconsistência)
 - [ ] Espaço em disco: ~3 GB livres (cópia + WAL + replay outputs)
 - [ ] Node 22+, Python 3.11+
@@ -15,17 +17,18 @@
 cd C:\Users\Rogerio\Desktop\RGMV_PROJETOS\SCOUTCORE_QUANT
 git checkout dev
 copy .env.example .env
-# editar .env e ajustar OPTA_LEGACY_DB e SCOUT_DB
+# editar .env e ajustar STATSLINE_LEGACY_DB e SCOUT_DB
 npm install
 ```
 
-### 2. Cópia única do opta.db → scout.db
+### 2. Preparar banco único
 
 ```powershell
-npm run setup:copy-legacy
+npm run extraction:migrate
+npm run single-db:copy   # opcional em ambiente novo/importacao legada
 ```
 
-Saída esperada: `OK — 1532 MB em ~30s`. Idempotente: aborta se `data/scout.db` já existe.
+O runtime atual usa `data/scout_extraction.db` como banco canônico. Em ambiente já migrado, valide `SCOUT_DB` e pule a cópia legada.
 
 ### 3. Wipe do estado de motor antigo
 
@@ -33,7 +36,7 @@ Saída esperada: `OK — 1532 MB em ~30s`. Idempotente: aborta se `data/scout.db
 npm run setup:wipe-state
 ```
 
-Apaga: `predictions`, `ml_predictions`, `calibration_states`, `motor_runs`, `motor_boards`, `motor_yankee_tickets`, `banca_apostas`, `tips`. Mantém: `partidas`, `team_profiles`, `eventos_faixa`, `odds`, `odds_historico` (dados crus). Roda `VACUUM` no final.
+Apaga o estado runtime atual e legado: `yankee_submission_tickets`, `yankee_submission_audit`, `yankee_submissions`, `run_slots`, `runs`, `prediction`, `motor_run`, `clv_history` e, se existirem, `predictions`, `ml_predictions`, `calibration_states`, `motor_runs`, `motor_boards`, `motor_yankee_tickets`, `banca_apostas`, `tips`. Mantém: `partidas`, `team_profiles`, `eventos_faixa`, `odds`, `odds_historico` (dados crus). `VACUUM` é opt-in com `SCOUT_WIPE_VACUUM=1`.
 
 ### 4. Aplicar migrations do motor novo
 
@@ -58,19 +61,13 @@ npm run dev:api
 # health: http://127.0.0.1:4040/health
 ```
 
-### 7. Configurar dual-write no FutMax
+### 7. Dual-write no FutMax
 
-Ver runbook separado (TODO). Resumo: criar `futmax/lib/dual-writer.cjs` e substituir `legacy.prepare(...).run(...)` por `dualWrite(...)` nos extractors de `partidas`, `eventos_faixa`, `odds`, `odds_historico`, `team_profiles`.
+Obsoleto no estado atual. Após a migração para banco único, o runtime do SCOUTCORE não depende mais de dual-write para operar.
 
 ### 8. Validar dual-write
 
-Após primeira extração com dual-write ativo:
-
-```powershell
-npm run job:sync-check
-```
-
-Esperado: `OK <table>: delta=0` em todas as tabelas. Se houver drift > 5, investigar logs do FutMax.
+Obsoleto no estado atual. A validação operacional agora é feita por `integrity_check`, smokes de API/sidecar e jobs rodando sobre `data/scout_extraction.db`.
 
 ### 9. Snapshot de closing line
 
@@ -90,11 +87,10 @@ node apps\jobs\src\settle-results.mjs --run-id=<run_id> --closing-odds=audit\clo
 
 ## Verificação final
 
-- [ ] `data/scout.db` criado
+- [ ] `data/scout_extraction.db` criado
 - [ ] `predictions` zerada, `partidas` com 14998 linhas
 - [ ] Migrations 001 aplicada (`SELECT * FROM schema_version`)
 - [ ] `npm run dev:api` sobe sem erro
 - [ ] `GET /health` retorna `{status:"ok"}`
-- [ ] FutMax dual-write configurado
-- [ ] Sync-check sem drift
+- [ ] API + sidecar usando `SCOUT_DB=data/scout_extraction.db`
 - [ ] `npm run job:snapshot-closing -- --dry-run` retorna cobertura compatível com a coleta de odds recente

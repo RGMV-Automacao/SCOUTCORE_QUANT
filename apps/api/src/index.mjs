@@ -19,6 +19,7 @@ import { registerRuns } from './routes/runs.mjs';
 import { registerStrategies } from './routes/strategies.mjs';
 import { runMigrations } from './migrate.mjs';
 import { startScheduler } from './scheduler.mjs';
+import { closeBooklineSession } from './bookline-session.mjs';
 
 function resolveDbPath(envVal, name) {
   if (!envVal) {
@@ -44,9 +45,13 @@ try {
 }
 
 const app = Fastify({ logger: { level: process.env.API_LOG_LEVEL ?? 'info' } });
-app.register(cors, { origin: '*' });
+app.register(cors, {
+  origin: '*',
+  methods: ['GET', 'HEAD', 'POST', 'DELETE', 'OPTIONS'],
+});
 const repo = new SqliteMatchRepository(SCOUT_DB);
 app.addHook('onClose', async () => repo.close());
+app.addHook('onClose', async () => { await closeBooklineSession().catch(() => null); });
 
 app.get('/health',     async () => buildHealthPayload({ repo }));
 app.get('/v1/health',  async () => buildHealthPayload({ repo }));

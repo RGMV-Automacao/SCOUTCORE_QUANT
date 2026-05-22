@@ -15,7 +15,9 @@ import path from 'node:path';
 import { settle } from '@scoutcore/markets';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.resolve(__dirname, '..', '..', 'data', 'scout.db');
+const DB_PATH = process.env.SCOUT_DB
+  ? path.resolve(process.env.SCOUT_DB)
+  : path.resolve(__dirname, '..', '..', 'data', 'scout_extraction.db');
 
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');

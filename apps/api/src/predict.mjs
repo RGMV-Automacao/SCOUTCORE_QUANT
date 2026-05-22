@@ -236,38 +236,7 @@ export async function runPredict({ repo, body, log = console, persist = true, ru
     //    Aplica family_cap (qg.json) limitando top-N por família para
     //    diversificar o ranking final (evita um único mercado dominante).
     emit('ev_rank');
-    const slotByKey = new Map(combined.map((s) => [s.market_key, s]));
-    const scored = combined
-      .filter((s) =>
-        s.market_odd != null &&
-        s.edge_pct != null &&
-        Number.isFinite(s.confidence) &&
-        s.provenance?.qg?.market_gate?.rank_eligible === true &&
-        !s.provenance?.phantom_edge_flag,
-      )
-      .map((s) => {
-        const score = s.edge_pct * s.confidence;
-        return { market_key: s.market_key, family: s.family, score };
-      })
-      .sort((a, b) => b.score - a.score);
-
-    const familyCounts = new Map();
-    const ev_ranked = [];
-    const ev_ranked_capped_out = [];
-    for (const x of scored) {
-      const cap = QG.getFamilyCap(x.family) ?? Infinity;
-      const cur = familyCounts.get(x.family) ?? 0;
-      if (cur < cap) {
-        ev_ranked.push(x.market_key);
-        familyCounts.set(x.family, cur + 1);
-      } else {
-        ev_ranked_capped_out.push(x.market_key);
-        const slot = slotByKey.get(x.market_key);
-        if (slot) {
-          slot.provenance = { ...(slot.provenance ?? {}), family_cap_excluded: true, family_cap_limit: cap };
-        }
-      }
-    }
+    const { ev_ranked, ev_ranked_capped_out } = buildEvRanking(combined);
 
     // Scout opt-in: SCOUT IA via LLM provider chain (options.scout=true).
     let scout = null;
@@ -376,16 +345,19 @@ export async function runPredict({ repo, body, log = console, persist = true, ru
     return response;
 }
 
-export function buildHealthPayload({ repo = null } = {}) {
+export async function buildHealthPayload({ repo = null } = {}) {
   const checks = {
     db: 'unknown',
     team_profiles_v2: { count: null, max_as_of: null, stale: null },
     league_priors: { count: null, max_as_of: null, stale: null },
+    isotonic_blob: { count: null, max_fit_at: null, stale: null },
     last_settled_prediction: { date: null, days_ago: null },
     engine_b_url: process.env.ENGINE_B_URL ?? null,
+    sidecar: { reachable: null, models_loaded: null, version: null, latency_ms: null, error: null },
   };
   const STALE_PROFILE_DAYS = 14;
   const STALE_PRIORS_DAYS = 14;
+  const STALE_ISOTONIC_DAYS = 45;
   const STALE_SETTLE_DAYS = 7;
 
   if (repo?.db) {
@@ -404,19 +376,52 @@ export function buildHealthPayload({ repo = null } = {}) {
         const ageDays = (Date.now() - new Date(lp.mx).getTime()) / 86400000;
         checks.league_priors.stale = ageDays > STALE_PRIORS_DAYS;
       }
+      const iso = repo.db.prepare('SELECT COUNT(*) AS n, MAX(fit_at) AS mx FROM isotonic_blob').get();
+      checks.isotonic_blob.count = iso.n;
+      checks.isotonic_blob.max_fit_at = iso.mx;
+      if (iso.mx) {
+        const ageDays = (Date.now() - new Date(iso.mx).getTime()) / 86400000;
+        checks.isotonic_blob.stale = ageDays > STALE_ISOTONIC_DAYS;
+      }
       try {
         const ls = repo.db.prepare(`
-          SELECT MAX(match_date) AS d FROM predictions
-          WHERE outcome IS NOT NULL
+            SELECT MAX(settled_at) AS d FROM prediction
+            WHERE result IS NOT NULL
         `).get();
         checks.last_settled_prediction.date = ls?.d ?? null;
         if (ls?.d) {
-          checks.last_settled_prediction.days_ago = Math.floor((Date.now() - new Date(ls.d).getTime()) / 86400000);
+          const ageDays = (Date.now() - new Date(ls.d).getTime()) / 86400000;
+          checks.last_settled_prediction.days_ago = Math.max(0, Math.floor(ageDays));
         }
-      } catch { /* tabela pode não ter coluna outcome em DB legado */ }
+        } catch { /* schema pode não expor settle no formato esperado */ }
       checks.db = 'ok';
     } catch (err) {
       checks.db = `error:${err.message}`;
+    }
+  }
+
+  // Sidecar ML — ping curto, nao-bloqueante (timeout 1.5s).
+  if (checks.engine_b_url) {
+    const tPing = Date.now();
+    try {
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 1500);
+      const r = await fetch(`${checks.engine_b_url.replace(/\/$/, '')}/health`, { signal: ctrl.signal });
+      clearTimeout(to);
+      checks.sidecar.latency_ms = Date.now() - tPing;
+      if (r.ok) {
+        const body = await r.json().catch(() => ({}));
+        checks.sidecar.reachable = true;
+        checks.sidecar.models_loaded = body.models_loaded ?? body.models ?? null;
+        checks.sidecar.version = body.version ?? null;
+      } else {
+        checks.sidecar.reachable = false;
+        checks.sidecar.error = `http_${r.status}`;
+      }
+    } catch (e) {
+      checks.sidecar.reachable = false;
+      checks.sidecar.error = e.name === 'AbortError' ? 'timeout' : (e.message ?? String(e));
+      checks.sidecar.latency_ms = Date.now() - tPing;
     }
   }
 
@@ -424,9 +429,12 @@ export function buildHealthPayload({ repo = null } = {}) {
     checks.db !== 'ok' ||
     !checks.team_profiles_v2.count ||
     !checks.league_priors.count ||
+    !checks.isotonic_blob.count ||
     checks.team_profiles_v2.stale === true ||
     checks.league_priors.stale === true ||
-    (checks.last_settled_prediction.days_ago != null && checks.last_settled_prediction.days_ago > STALE_SETTLE_DAYS);
+    checks.isotonic_blob.stale === true ||
+    (checks.last_settled_prediction.days_ago != null && checks.last_settled_prediction.days_ago > STALE_SETTLE_DAYS) ||
+    (checks.engine_b_url != null && checks.sidecar.reachable === false);
 
   return {
     status: degraded ? 'degraded' : 'ok',
@@ -579,6 +587,43 @@ function sampleScore(n, target = 20) {
   return Math.max(0, Math.min(1, value / target));
 }
 
+export function buildEvRanking(slots, { getFamilyCap = QG.getFamilyCap } = {}) {
+  const slotByKey = new Map((slots ?? []).map((s) => [s.market_key, s]));
+  const scored = (slots ?? [])
+    .filter((s) =>
+      s.certified === true &&
+      s.market_odd != null &&
+      s.edge_pct != null &&
+      Number.isFinite(s.confidence) &&
+      s.provenance?.qg?.market_gate?.rank_eligible === true &&
+      !s.provenance?.phantom_edge_flag,
+    )
+    .map((s) => {
+      const score = s.edge_pct * s.confidence;
+      return { market_key: s.market_key, family: s.family, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const familyCounts = new Map();
+  const ev_ranked = [];
+  const ev_ranked_capped_out = [];
+  for (const x of scored) {
+    const cap = getFamilyCap(x.family) ?? Infinity;
+    const cur = familyCounts.get(x.family) ?? 0;
+    if (cur < cap) {
+      ev_ranked.push(x.market_key);
+      familyCounts.set(x.family, cur + 1);
+    } else {
+      ev_ranked_capped_out.push(x.market_key);
+      const slot = slotByKey.get(x.market_key);
+      if (slot) {
+        slot.provenance = { ...(slot.provenance ?? {}), family_cap_excluded: true, family_cap_limit: cap };
+      }
+    }
+  }
+  return { ev_ranked, ev_ranked_capped_out };
+}
+
 export function applyAOnlyConfidencePenalty(slot, factor = A_ONLY_CONFIDENCE_FACTOR) {
   const reason = slot?.provenance?.divergence_resolved_by;
   if (reason !== 'engine_b_unavailable' && reason !== 'engine_b_no_slot') return slot;
@@ -629,7 +674,7 @@ function evaluateMarketGate(slot, { gates, minEdgePp = 0 } = {}) {
   if (slot.provenance?.suppressed_by_request) reasons.push('suppressed_by_request');
   if (slot.market_odd == null || slot.edge_pct == null) {
     return {
-      pass: reasons.length === 0,
+      pass: false,
       rank_eligible: false,
       reasons: reasons.length > 0 ? reasons : ['no_market_odd'],
     };

@@ -10,13 +10,32 @@ fetch-superbet-odds (job/cron)
         ↓
   /v1/runs/:id/strategy/yankee  (combinator + board-validator + BIBD)
         ↓
-        /v1/runs/:id/yankee/dry-run   ← valida board local + catálogo/quote público da Superbet e persiste status='validated', is_dry_run=1
-        ↓  (aprovação manual)
-        /v1/runs/:id/yankee/submit    ← repete a validação externa; só persiste status='submitted' se não houver bloqueios
+        /v1/runs/:id/yankee/dry-run   ← opcional: valida board local + catálogo/quote público da Superbet e persiste status='external_passed' ou 'external_failed', is_dry_run=1
+        ↓  (atalho permitido sem dry-run)
+        /v1/runs/:id/yankee/submit    ← monta/repara/valida no próprio submit; se houver dry-run, reutiliza overrides efetivos; tenta submit real se o executor estiver habilitado
         ↓  (após os jogos)
   /v1/settle/tickets            ← settlement cascata no DB
 
-A “submissão real” neste sistema continua sendo a persistência local em yankee_submissions para posterior colocação manual na Superbet ou automação futura. Ainda não existe bot de aposta automática, mas agora o gate de dry-run/submit já compara os tickets com o catálogo e a quote pública da casa antes de liberar o passo seguinte.
+A “submissão real” agora tem duas camadas: persistência auditável local em `yankee_submissions`/`yankee_submission_tickets` e executor externo opcional. Sem `SCOUTCORE_BOOKLINE_REAL_SUBMIT=true` ou `BOOKLINE_REAL_SUBMIT=true`, o submit fica em `ready_for_real_submit`; com credenciais de sessão/cookie configuradas, o backend tenta enviar ticket a ticket e grava recibo/erro para retry.
+
+CANAL DE SUBMIT (browser vs. fetch)
+
+O executor externo tem dois canais:
+
+- `browser` (default quando `BOOKLINE_EMAIL`/`BOOKLINE_PASSWORD` ou `BOOKLINE_STORAGE_STATE` existem): a API mantém um Playwright singleton (`apps/api/src/bookline-session.mjs`), faz login automaticamente, força refresh do token antifraud (`refreshAntifraudToken`), extrai `sessionid = ${antifraud}|${userId}` e dispara o POST via `page.request.post`, reusando o cookie jar autenticado (`sb-production-token`). Esse é o único caminho certificável — equivalente ao legado `ApolloFinalV2/bot/api-submitter.mjs`.
+- `fetch` (fallback explícito com `BOOKLINE_SUBMIT_VIA_BROWSER=false`): a API usa `fetch` direto com `BOOKLINE_SESSIONID`/`BOOKLINE_COOKIE` de env. Funciona enquanto o token não rotacionar; serve apenas para debug.
+
+Variáveis relevantes:
+
+- `BOOKLINE_EMAIL` / `BOOKLINE_PASSWORD` — credenciais Superbet.
+- `BOOKLINE_STORAGE_STATE` — caminho do storage state (default `data/.bookline-session.json`).
+- `BOOKLINE_HEADLESS` — `true` por padrão; `false` para diagnóstico visual.
+- `BOOKLINE_SUBMIT_VIA_BROWSER` — override explícito do canal (`true`/`false`).
+- `BOOKLINE_SESSIONID_TTL_MS` — cache do sessionid extraído (default 25000ms).
+- `SCOUTCORE_BOOKLINE_REAL_SUBMIT` / `BOOKLINE_REAL_SUBMIT` — habilita o executor.
+
+Pré-requisito: `npm install` em `apps/api` (Playwright é `optionalDependency`). Depois, `npx playwright install chromium` uma vez.
+
 
 Notas operacionais do estado atual:
 
@@ -203,7 +222,7 @@ Tarefa 1.3 — Executar dry-run Yankee
 
 $dryBody = @{
   stake_per_ticket = 3
-} | ConvertTo-Json
+} | ConvertTo-Json -Depth 20
 
 $dryRun = Invoke-RestMethod "http://127.0.0.1:4040/v1/runs/$runId/yankee/dry-run" `
   -Method Post `
@@ -222,21 +241,68 @@ Write-Host "Superbet summary: $($dryRun.external_validation.summary | ConvertTo-
 
 Verificações:
 
-- status = validated
+- status = external_passed
 - tickets_count > 0
 - validation_scope = local_board_plus_superbet_catalog
 - external_validation.summary.tickets_total > 0
-- blocking = [] para um dry-run aprovado; se vier `superbet_boards_failed:*` ou `superbet_gaps:*`, o ticket ainda não está apto
+- can_submit_real = true
+- blocking = [] para um dry-run aprovado; se vier `superbet_boards_failed:*` ou `superbet_gaps:*`, mesmo após o reparo automático, o ticket ainda não está apto
 - stake_total = tickets_count × stake_per_ticket
 
 Observação importante:
 
-- No contrato atual, o dry-run sempre persiste uma linha em yankee_submissions com is_dry_run=1 e status=validated.
+- No contrato atual, o dry-run persiste uma linha em yankee_submissions com is_dry_run=1 e status semântico: `external_passed` se aprovado; `external_failed` se houver bloqueio.
 - O dry-run agora também tenta casar cada board com o catálogo público do Bet Builder e pedir a quote combinada da Superbet.
-- status=validated sozinho não basta; blocking precisa estar vazio e external_validation.summary.tickets_ok precisa bater com tickets_total antes do submit real.
+- Se a validação externa reprovar um confronto por `price_drift_combo:*` e/ou `actual_ev_combo:*`, a montagem automática da Yankee exclui esse match_id e tenta remontar o board com os próximos confrontos aprovados.
+- O payload expõe esse histórico em `repair_history[]`, agora com `excluded_matches[] { match_id, match, reasons[] }` e `added_matches[] { match_id, match }`, e adiciona warnings no formato `superbet_repair_pass:N:excluded_matches:X`.
+- status=external_passed sozinho ainda deve ser conferido junto com `blocking=[]`, `can_submit_real=true` e `external_validation.summary.tickets_ok = tickets_total`.
 - Divergência de preço acima do limite atual também entra em blocking, no formato `price_drift_combo:*` dentro de external_validation.tickets[].boards[].gaps.
+- EV real combinado abaixo do mínimo configurado entra em blocking como `actual_ev_combo:*`; padrão atual aceita pequena variação até `min_actual_combo_ev=-0.01` (-1%).
+- Mercado ausente, seleção ausente ou quote inativa continuam apenas como trava; nesses casos o board não é trocado automaticamente.
+- Submit real agora pode ser chamado sem dry-run prévio; nesse caso o backend monta a Yankee, aplica reparo automático, valida catálogo/quote público e só tenta tickets `ok`.
+- Submit real também pode seguir em modo parcial quando houver tickets `ok` e outros bloqueados. Os inválidos ficam fora do submit e podem ser ajustados depois.
+- Se `repair_history` vier preenchido no dry-run e `blocking` estiver vazio, o submit real deve enviar `overrides = $dryRun.effective_overrides` para usar o board reparado retornado na própria resposta. Sem dry-run, o backend calcula os overrides efetivos no próprio submit.
 
-Tarefa 1.4 — Inspecionar tickets do dry-run
+Tarefa 1.4 — Preview seguro de 1 quadra sem submit
+
+Antes de qualquer teste real, validar a montagem do payload de 1 quadra sem POST de aposta:
+
+$previewBody = @{
+  dry_run_submission_id = $dryRun.submission_id
+  stake_per_ticket = 1
+  ticket_kind = 'fourfold'
+  max_tickets = 1
+} | ConvertTo-Json -Depth 10
+
+$submitPreview = Invoke-RestMethod "http://127.0.0.1:4040/v1/runs/$runId/yankee/submit-preview" `
+  -Method Post `
+  -ContentType 'application/json' `
+  -Body $previewBody `
+  -TimeoutSec 30
+
+Write-Host "Mode: $($submitPreview.mode)"
+Write-Host "Executor real habilitado: $($submitPreview.real_submit_enabled)"
+Write-Host "Ready: $($submitPreview.summary.ready)/$($submitPreview.summary.selected_total)"
+Write-Host "Failed: $($submitPreview.summary.failed)"
+Write-Host "Skipped: $($submitPreview.summary.skipped)"
+Write-Host "Ticket: $($submitPreview.tickets[0] | ConvertTo-Json -Compress)"
+
+Verificações:
+
+- mode = submit_preview_no_post
+- summary.ready = 1
+- summary.failed = 0
+- summary.selected_total = 1
+- summary.skipped = tickets_total - 1
+- Nenhuma linha nova com is_dry_run=0 deve aparecer em /v1/runs/:id/yankee/submissions.
+
+Observações:
+
+- Yankee automático não persiste `kind`; a API infere `fourfold` quando o ticket tem 4 boards/match_ids.
+- `submit-preview` reusa o dry-run aprovado, remonta payload, quote/meta e hash, mas não chama o endpoint real de aposta.
+- Na UI, o botão “Testar 1 quadra” usa este contrato.
+
+Tarefa 1.5 — Inspecionar tickets do dry-run
 
 $dryRun.tickets | ForEach-Object {
   Write-Host "--- Ticket $($_.ticket_idx) | Odd: $($_.ticket_odd) | Stake: R$ $($_.stake_brl) ---"
@@ -252,13 +318,14 @@ Exportar CSV de auditoria do run:
 
 npm run run:audit -- --run-id=$runId --out="audit/dry-run-$(Get-Date -Format 'yyyy-MM-dd')"
 
-Tarefa 1.5 — Critérios de aprovação do dry-run
+Tarefa 1.6 — Critérios de aprovação do dry-run
 
 Critério | Gate | Ação se falhar
 board_status = ok | Obrigatório | Expandir janela, revisar oferta de odds ou reduzir filtros
 tickets_count ≥ 1 | Obrigatório | Verificar odds no DB, reexecutar scraper, ampliar janela
 blocking = [] | Obrigatório | Não seguir para submit; revisar strategy, drift e gaps retornados por external_validation
 external_validation.summary.tickets_ok = tickets_total | Obrigatório | Não seguir para submit; ajustar board ou reexecutar mais perto do horário do jogo
+repair_history revisado | Recomendado | Conferir quais confrontos foram excluídos automaticamente e se o board final continua coerente
 combo_odd por confronto dentro da faixa do Yankee | Obrigatório | Revisar odd_combo_range e odd_combo_exception
 Warnings críticos revisados | Recomendado | Inspecionar board.warnings e motor-runs do run
 stake_total ≤ limite diário | Obrigatório | Ajustar stake_per_ticket
@@ -267,9 +334,9 @@ BLOCO 2 — SUBMIT REAL
 
 Pré-condição:
 
-- dry-run aprovado
 - kickoffs ainda no futuro para os jogos dos tickets
 - nenhuma submissão real anterior para o mesmo run
+- dry-run aprovado é recomendado para auditoria/preview, mas não é obrigatório para o botão Superbet
 
 Tarefa 2.1 — Confirmar estado pré-submit
 
@@ -298,12 +365,51 @@ $dryRun.tickets | ForEach-Object {
   }
 }
 
-Tarefa 2.2 — Executar submit real
+Tarefa 2.2 — Executar submit real limitado a 1 quadra
+
+Para teste controlado, submeter apenas 1 quadra aprovada. Este é o mesmo filtro usado pelo preview seguro:
+
+$submitBody = @{
+  stake_per_ticket = 1
+  confirm = $true
+  ticket_kind = 'fourfold'
+  max_tickets = 1
+} | ConvertTo-Json -Depth 10
+
+if ($dryRun) {
+  $submitBodyObj = $submitBody | ConvertFrom-Json
+  $submitBodyObj | Add-Member -NotePropertyName dry_run_submission_id -NotePropertyValue $dryRun.submission_id -Force
+  $submitBodyObj | Add-Member -NotePropertyName overrides -NotePropertyValue $dryRun.effective_overrides -Force
+  $submitBody = $submitBodyObj | ConvertTo-Json -Depth 10
+}
+
+$submitResult = Invoke-RestMethod "http://127.0.0.1:4040/v1/runs/$runId/yankee/submit" `
+  -Method Post `
+  -ContentType 'application/json' `
+  -Body $submitBody `
+  -TimeoutSec 120
+
+Write-Host "Submission ID: $($submitResult.submission_id)"
+Write-Host "Status: $($submitResult.status)"
+Write-Host "Tickets gerados: $($submitResult.tickets_count)"
+Write-Host "Real submit: $($submitResult.real_submit_summary | ConvertTo-Json -Compress)"
+
+Verificações:
+
+- real_submit_summary.selected_total = 1
+- real_submit_summary.skipped = tickets_ok - 1
+- Se executor real estiver habilitado, somente 1 ticket deve aparecer como submitted/failed; os demais tickets OK ficam `skipped`, não `pending`.
+- Se executor real estiver desligado, status esperado é `ready_for_real_submit`.
+- Se nenhum dry-run foi enviado, a resposta ainda deve trazer `validation_scope=local_board_plus_superbet_catalog` e `external_validation.summary`.
+
+Tarefa 2.3 — Executar submit real de todos os tickets OK
 
 $submitBody = @{
   stake_per_ticket = 3
   confirm = $true
-} | ConvertTo-Json
+  dry_run_submission_id = $dryRun.submission_id
+  overrides = $dryRun.effective_overrides
+} | ConvertTo-Json -Depth 10
 
 $submitResult = Invoke-RestMethod "http://127.0.0.1:4040/v1/runs/$runId/yankee/submit" `
   -Method Post `
@@ -315,13 +421,32 @@ Write-Host "Submission ID: $($submitResult.submission_id)"
 Write-Host "Status: $($submitResult.status)"
 Write-Host "Tickets: $($submitResult.tickets_count)"
 Write-Host "Stake total: R$ $($submitResult.stake_total)"
+Write-Host "Real submit: $($submitResult.real_submit_summary | ConvertTo-Json -Compress)"
 
 Observações:
 
 - confirm=true é obrigatório no contrato atual.
+- `overrides=$dryRun.effective_overrides` evita voltar ao board anterior quando o dry-run trocou confrontos por drift/EV real.
+- `ticket_kind`/`ticket_idx`/`max_tickets` limitam o escopo do submit real. Sem esses campos, a API tenta todos os tickets OK.
+- Se o executor real estiver desativado, status esperado é `ready_for_real_submit` e os tickets ficam persistidos para colocação manual ou retry após habilitar credenciais.
+- Se o executor real estiver ativado, status esperado é `submitted`; falhas parciais retornam `partial_submitted` ou `submit_failed` e ficam retryáveis por ticket.
 - Se houver bloqueio, o endpoint rejeita a submissão e o payload precisa ser revisado antes de nova tentativa.
 
-Tarefa 2.3 — Exportar mesa para colocação manual na Superbet
+Retry idempotente de uma submissão já criada:
+
+$retryBody = @{
+  confirm = $true
+} | ConvertTo-Json
+
+$retry = Invoke-RestMethod "http://127.0.0.1:4040/v1/runs/$runId/yankee/submissions/$($submitResult.submission_id)/retry-real" `
+  -Method Post `
+  -ContentType 'application/json' `
+  -Body $retryBody `
+  -TimeoutSec 120
+
+$retry | ConvertTo-Json -Depth 5
+
+Tarefa 2.4 — Exportar mesa para colocação manual na Superbet
 
 $csvPath = "submit-$runId.csv"
 "ticket_idx,match_id,market_key,ticket_odd,stake_brl" | Out-File $csvPath -Encoding utf8
@@ -348,7 +473,7 @@ Checklist de colocação manual:
 - stake = R$ 3,00 por ticket
 - registrar o slip ID manualmente, se houver controle externo
 
-Tarefa 2.4 — Verificar persistência da submissão
+Tarefa 2.5 — Verificar persistência da submissão
 
 $finalCheck = Invoke-RestMethod "http://127.0.0.1:4040/v1/runs/$runId/yankee/submissions"
 $finalCheck.items | Format-Table submission_id, status, is_dry_run, tickets_count, stake_total, submitted_at
@@ -358,7 +483,7 @@ BLOCO 3 — SETTLEMENT
 Observação:
 
 - O settlement de tickets considera submissões com status submitted ou pending.
-- Dry-runs com status validated não entram no settle.
+- Dry-runs com status `external_passed`/`external_failed` não entram no settle.
 
 Tarefa 3.1 — Settlement dry-run
 
@@ -393,11 +518,13 @@ CHECKLIST FINAL PRÉ-VIRADA DE CHAVE
 [ ] API respondendo em /health
 [ ] /v1/run retornou matches > 0 e slots > 0
 [ ] Preview Yankee retornou board_status = ok e tickets > 0
-[ ] Dry-run retornou status = validated com blocking = []
+[ ] Dry-run opcional retornou status = external_passed com blocking = [] e can_submit_real = true, quando usado
+[ ] Preview opcional de 1 quadra retornou mode = submit_preview_no_post, ready = 1 e failed = 0, quando usado
 [ ] Tickets inspecionados manualmente
 [ ] Nenhum submit real anterior no run
-[ ] Submit real retornou status = submitted
-[ ] CSV exportado para colocação manual
+[ ] Submit real de teste foi limitado com ticket_kind = fourfold e max_tickets = 1, ou houve decisão explícita de enviar todos os tickets OK
+[ ] Submit real retornou status = submitted/partial_submitted, ou ready_for_real_submit se executor externo estiver desligado
+[ ] CSV exportado para colocação manual quando executor externo estiver desligado
 [ ] Settlement testado após os jogos
 
 NOTAS PARA O AGENTE

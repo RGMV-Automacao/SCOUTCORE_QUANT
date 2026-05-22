@@ -8,19 +8,20 @@ const baseCtx = {
   profileHome: {
     avg_gols_marcados: 1.5, avg_gols_sofridos: 1.0,
     avg_escanteios: 5.5, avg_chutes: 12, avg_cartoes_amarelos: 2, avg_faltas_cometidas: 12,
-    avg_chutes_alvo: 4.5, avg_impedimentos: 2.0, avg_defesas: 3.5,
+    avg_chutes_alvo: 4.5, avg_impedimentos: 2.0, avg_defesas: 3.5, avg_desarmes: 14,
     n_events: 10,
   },
   profileAway: {
     avg_gols_marcados: 1.2, avg_gols_sofridos: 1.3,
     avg_escanteios: 4.8, avg_chutes: 10, avg_cartoes_amarelos: 2.2, avg_faltas_cometidas: 13,
-    avg_chutes_alvo: 4.0, avg_impedimentos: 2.2, avg_defesas: 3.8,
+    avg_chutes_alvo: 4.0, avg_impedimentos: 2.2, avg_defesas: 3.8, avg_desarmes: 14,
     n_events: 10,
   },
   priors: {
     avg_goals_total: 2.6, avg_escanteios_total: 10.0, avg_chutes_total: 22,
     avg_cartoes_total: 4.2, avg_faltas_total: 24,
     avg_chutes_alvo_total: 8.5, avg_impedimentos_total: 4.2, avg_defesas_total: 7.3,
+    avg_desarmes_total: 28,
   },
 };
 

@@ -50,8 +50,13 @@ const DEFAULT_CURINGA_GOVERNANCE = Object.freeze({
   a_only_confidence_factor: 0.85,
   reliability_boost: 0.10,
   family_reliability: {
-    engine_a: ['gols', 'escanteios', 'chutes', 'chutes_alvo', 'faltas', 'cartoes', 'impedimentos', 'defesas', 'escanteios_race'],
-    engine_b: ['1x2', 'btts', 'htft', 'dupla', 'cartoes_1x2', 'escanteios_1x2', 'btts_algum_tempo'],
+    engine_a: [
+      'gols', 'escanteios', 'chutes', 'chutes_alvo', 'faltas', 'cartoes',
+      'impedimentos', 'defesas', 'desarmes',
+      'gols_oddeven', 'escanteios_oddeven', 'escanteios_handicap',
+      'escanteios_1x2', 'cartoes_1x2', 'chutes_1x2', 'chutes_alvo_1x2',
+    ],
+    engine_b: ['1x2', 'btts', 'dupla'],
   },
 });
 
@@ -138,7 +143,6 @@ export function getConfidenceMultiplier(slot) {
   }
   if (family === 'chutes')       return cm.shots ?? 1.0;
   if (family === 'chutes_alvo')  return cm.sot ?? 1.0;
-  if (family === 'finalizacoes') return cm.shots ?? 1.0;
   if (family === 'faltas')       return cm.fouls_audited ?? 1.0;
 
   if (family === 'gols' && direction === 'handicap') {

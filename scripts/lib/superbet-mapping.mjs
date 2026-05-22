@@ -1,11 +1,12 @@
 // Superbet odds lookup — mapeamento HONESTO baseado em nomenclatura real
-// observada no DB (fonte='superbet'). Não inventa correspondência: quando
-// market_key não tem regra, retorna `unmapped_in_motor_catalog`.
+// observada no DB (fonte='superbet'). Quando `odds.mercado_key` existe, o
+// casamento canônico exato vem antes dos fallbacks textuais; sem chave canônica
+// e sem regra textual, retorna `unmapped_in_motor_catalog`.
 //
 // Nomenclatura real Superbet (verificada via SELECT mercado, selecao, linha):
 //   1x2 FT       : mercado='Resultado Final'                selecao IN {'1','X','2'}
 //   1x2 HT/2T    : '1º Tempo - Resultado (1X2)' / '2º Tempo - Resultado (1X2)' selecao IN {'1','X','2'}
-//   Dupla        : 'Dupla Chance' selecao IN {'1 ou Empate','1 ou 2','Empate ou 2'}
+//   Dupla        : 'Dupla Chance' selecao IN {'1X','12','X2'} (legado: {'1 ou Empate','1 ou 2','Empate ou 2'})
 //                  '1º Tempo - Dupla Chance' / '2º Tempo - Dupla Chance' selecao IN {'1X','12','X2'}
 //   DNB          : 'Empate Anula Aposta' selecao='{team_name}'  (1º Tempo, 2º Tempo análogos)
 //   HT/FT        : 'Intervalo/Resultado Final' selecao IN {'1/1','1/X','1/2','X/1','X/X','X/2','2/1','2/X','2/2'}
@@ -24,11 +25,11 @@
 //   Gols Total 2T: '2º Tempo - Total de Gols'
 //   Gols por Equipe: 'Total de Gols da Equipe' selecao='MAIS|MENOS {Team}' linha='X.X'
 //   Escanteios   : 'Total de Escanteios' (FT) / '1º Tempo - Total de Escanteios' (HT)
-//   Escanteios 1x2: 'Equipe Com Mais Escanteios (1X2)' selecao='{team}' ou 'Empate'
+//   Escanteios 1x2: 'Equipe Com Mais Escanteios (1X2)' selecao IN {'1','X','2'}
 //   Escanteios race: 'Corrida até X Escanteios' selecao='{N} - {team}' ou '{N} - Nenhuma das equipes -'
 //   Escanteios exato: 'Número Exato' não tem; usar 'Faixa de Escanteios' (range) — não cobrimos eq_X individual
 //   Cartões      : 'Total de Cartões' / '1º Tempo - Total de Cartões'
-//   Cartões 1x2  : 'Equipe com Mais Cartões (1X2)' selecao='{team}'/'Empate'/'1'/'X'/'2'
+//   Cartões 1x2  : 'Equipe com Mais Cartões (1X2)' selecao IN {'1','X','2'}
 //   Chutes_alvo  : 'Total de Chutes no Gol' (FT) / '1º Tempo - Total de Chutes no Gol' (HT)
 //   Chutes (todos): 'Total de Finalizações' / '1º Tempo - Total de Finalizações'
 //   Defesas      : 'Total de Defesas do Goleiro' / '1º Tempo - Total de Defesas do Goleiro'
@@ -46,6 +47,73 @@ function parseLine(token) {
 
 function selecaoOverUnder(dir, linha) {
   return dir === 'over' ? `Mais de ${linha}` : `Menos de ${linha}`;
+}
+
+const TEAM_VARIANT_ALIASES = new Map([
+  ['gremio', ['Grêmio RS', 'Gremio RS']],
+  ['newcastle united', ['Newcastle']],
+]);
+
+function normalizeTeamAliasKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function teamNameVariants(team) {
+  const raw = String(team || '').replace(/\s+/g, ' ').trim();
+  if (!raw) return [];
+
+  const tokens = raw.split(' ');
+  const withoutJoiners = tokens.filter((token) => !/^(de|da|do|del|fc|cf|sc)$/i.test(token));
+  const withoutWanderers = /wanderers$/i.test(withoutJoiners[withoutJoiners.length - 1] || '')
+    ? withoutJoiners.slice(0, -1)
+    : withoutJoiners;
+
+  const baseVariants = [
+    raw,
+    withoutJoiners.join(' ').trim(),
+    withoutWanderers.join(' ').trim(),
+  ].filter(Boolean);
+
+  const aliasVariants = baseVariants.flatMap((variant) => TEAM_VARIANT_ALIASES.get(normalizeTeamAliasKey(variant)) ?? []);
+
+  return [...new Set([
+    ...baseVariants,
+    ...aliasVariants,
+  ])];
+}
+
+function selecao1x2(dir) {
+  return dir === 'home' ? '1' : dir === 'draw' ? 'X' : '2';
+}
+
+function selecaoDupla(dir) {
+  return dir === '1x' ? '1X' : dir === '12' ? '12' : 'X2';
+}
+
+const ODDS_COLUMNS_CACHE = new WeakMap();
+
+function oddsColumns(db) {
+  if (!ODDS_COLUMNS_CACHE.has(db)) {
+    const cols = new Set(db.prepare('PRAGMA table_info(odds)').all().map((row) => row.name));
+    ODDS_COLUMNS_CACHE.set(db, cols);
+  }
+  return ODDS_COLUMNS_CACHE.get(db);
+}
+
+function appendBooklineSourceFilter(db, where, params) {
+  const cols = oddsColumns(db);
+  if (cols.has('source_system')) {
+    where.push('source_system = ?');
+    params.push('bookline');
+  } else if (cols.has('fonte')) {
+    where.push('fonte = ?');
+    params.push('super' + 'bet');
+  }
 }
 
 // Sinal/n para chaves do tipo 'minus_1', 'plus_2_5', '1', '0_5'
@@ -74,6 +142,7 @@ export function buildLookupPlan(market_key, home, away) {
     const period = m[1], dir = m[2];
     const sel = dir === 'home' ? '1' : dir === 'draw' ? 'X' : '2';
     if (period === 'ft') {
+      plans.push({ mercadoEqOrLike: { eq: 'Resultado Final (1X2)' }, selecao: sel });
       plans.push({ mercadoEqOrLike: { eq: 'Resultado Final' }, selecao: sel });
     } else if (period === 'ht') {
       plans.push({ mercadoEqOrLike: { like: '%Tempo - Resultado (1X2)' }, selecao: sel });
@@ -89,11 +158,12 @@ export function buildLookupPlan(market_key, home, away) {
   m = k.match(/^dupla_total_(ft|ht|2t)_(1x|12|x2)$/);
   if (m) {
     const period = m[1], dir = m[2];
+    const sel = selecaoDupla(dir);
     if (period === 'ft') {
-      const map = { '1x': '1 ou Empate', '12': '1 ou 2', 'x2': 'Empate ou 2' };
-      plans.push({ mercadoEqOrLike: { eq: 'Dupla Chance' }, selecao: map[dir] });
+      const legacy = { '1x': '1 ou Empate', '12': '1 ou 2', 'x2': 'Empate ou 2' };
+      plans.push({ mercadoEqOrLike: { eq: 'Dupla Chance' }, selecao: sel });
+      plans.push({ mercadoEqOrLike: { eq: 'Dupla Chance' }, selecao: legacy[dir] });
     } else {
-      const sel = dir === '1x' ? '1X' : dir === '12' ? '12' : 'X2';
       plans.push({ mercadoEqOrLike: { like: '%Tempo - Dupla Chance' }, selecao: sel });
     }
     return plans;
@@ -286,16 +356,29 @@ export function buildLookupPlan(market_key, home, away) {
     return plans;
   }
 
-  // Gols por equipe FT (Superbet usa 'Total de Gols da Equipe')
-  m = k.match(/^gols_(home|away)_ft_(over|under)_(\d+_\d+|\d+)$/);
+  // Gols por equipe FT/HT (Superbet usa tabs de equipe)
+  m = k.match(/^gols_(home|away)_(ft|ht)_(over|under)_(\d+_\d+|\d+)$/);
   if (m) {
-    const scope = m[1], dir = m[2], lineRaw = m[3];
+    const scope = m[1], period = m[2], dir = m[3], lineRaw = m[4];
     const linha = parseLine(lineRaw);
     if (!linha) return [];
     const team = scope === 'home' ? home : away;
     if (!team) return [];
     const prefix = dir === 'over' ? 'MAIS' : 'MENOS';
-    plans.push({ mercadoEqOrLike: { eq: 'Total de Gols da Equipe' }, selecao: `${prefix} ${team}`, linha });
+    const sel = selecaoOverUnder(dir, linha);
+    const teamVariants = teamNameVariants(team);
+    if (period === 'ft') {
+      for (const teamVariant of teamVariants) {
+        plans.push({ mercadoEqOrLike: { eq: `${teamVariant} - Total de Gols` }, selecao: sel, linha });
+      }
+      plans.push({ mercadoEqOrLike: { eq: 'Total de Gols da Equipe' }, selecao: `${prefix} ${team}`, linha });
+    } else {
+      for (const teamVariant of teamVariants) {
+        plans.push({ mercadoEqOrLike: { eq: `1º Tempo - Total de Gols de ${teamVariant}` }, selecao: sel, linha });
+      }
+      plans.push({ mercadoEqOrLike: { like: '%Tempo - Total de Gols do Time' }, selecao: `${prefix} ${team}`, linha });
+      plans.push({ mercadoEqOrLike: { like: '%Tempo - Total de Gols da Equipe' }, selecao: `${prefix} ${team}`, linha });
+    }
     return plans;
   }
 
@@ -306,15 +389,23 @@ export function buildLookupPlan(market_key, home, away) {
     const linha = parseLine(lineRaw);
     if (!linha) return [];
     const sel = selecaoOverUnder(dir, linha);
+    const prefix = dir === 'over' ? 'MAIS' : 'MENOS';
     const team = scope === 'home' ? home : scope === 'away' ? away : null;
     if (scope === 'total') {
       if (period === 'ft') plans.push({ mercadoEqOrLike: { eq: 'Total de Escanteios' }, selecao: sel, linha });
       else plans.push({ mercadoEqOrLike: { like: '%Tempo - Total de Escanteios' }, selecao: sel, linha });
     } else if (team) {
+      const teamVariants = teamNameVariants(team);
       if (period === 'ft') {
-        plans.push({ mercadoEqOrLike: { eq: `${team} - Total de Escanteios` }, selecao: sel, linha });
+        for (const teamVariant of teamVariants) {
+          plans.push({ mercadoEqOrLike: { eq: `${teamVariant} - Total de Escanteios` }, selecao: sel, linha });
+          plans.push({ mercadoEqOrLike: { eq: 'Total de Escanteios da Equipe' }, selecao: `${prefix} ${teamVariant}`, linha });
+        }
       } else {
-        plans.push({ mercadoEqOrLike: { like: `%Tempo - Total de Escanteios de ${team}` }, selecao: sel, linha });
+        for (const teamVariant of teamVariants) {
+          plans.push({ mercadoEqOrLike: { eq: `1º Tempo - Total de Escanteios de ${teamVariant}` }, selecao: sel, linha });
+          plans.push({ mercadoEqOrLike: { like: `%Tempo - Total de Escanteios de ${teamVariant}` }, selecao: sel, linha });
+        }
       }
     }
     return plans;
@@ -324,11 +415,15 @@ export function buildLookupPlan(market_key, home, away) {
   m = k.match(/^escanteios_1x2_total_(ft|ht)_(home|draw|away)$/);
   if (m) {
     const period = m[1], dir = m[2];
+    const sel = selecao1x2(dir);
     const team = dir === 'home' ? home : dir === 'away' ? away : 'Empate';
     if (!team) return [];
     if (period === 'ft') {
+      plans.push({ mercadoEqOrLike: { eq: 'Equipe Com Mais Escanteios (1X2)' }, selecao: sel });
       plans.push({ mercadoEqOrLike: { eq: 'Equipe Com Mais Escanteios (1X2)' }, selecao: team });
     } else {
+      plans.push({ mercadoEqOrLike: { like: '%Tempo - Time com Mais Escanteios' }, selecao: sel });
+      plans.push({ mercadoEqOrLike: { like: '%Tempo - Equipe Com Mais Escanteios (1X2)' }, selecao: sel });
       plans.push({ mercadoEqOrLike: { like: '%Tempo - Time com Mais Escanteios' }, selecao: team });
       plans.push({ mercadoEqOrLike: { like: '%Tempo - Equipe Com Mais Escanteios (1X2)' }, selecao: team });
     }
@@ -370,13 +465,57 @@ export function buildLookupPlan(market_key, home, away) {
   }
 
   // Cartões 1x2
-  m = k.match(/^cartoes_1x2_total_ft_(home|draw|away)$/);
+  m = k.match(/^cartoes_1x2_total_(ft|ht)_(home|draw|away)$/);
   if (m) {
-    const dir = m[1];
+    const period = m[1], dir = m[2];
+    const sel = selecao1x2(dir);
     const team = dir === 'home' ? home : dir === 'away' ? away : 'Empate';
     if (!team) return [];
-    plans.push({ mercadoEqOrLike: { eq: 'Equipe com Mais Cartões (1X2)' }, selecao: team });
-    plans.push({ mercadoEqOrLike: { eq: 'Equipe Com Mais Cartões (1X2)' }, selecao: team });
+    const markets = period === 'ft'
+      ? [{ eq: 'Equipe com Mais Cartões (1X2)' }, { eq: 'Equipe Com Mais Cartões (1X2)' }]
+      : [{ eq: '1° Tempo - Cartões 1X2' }, { eq: '1º Tempo - Cartões 1X2' }];
+    for (const mercadoEqOrLike of markets) {
+      plans.push({ mercadoEqOrLike, selecao: sel });
+      plans.push({ mercadoEqOrLike, selecao: team });
+    }
+    return plans;
+  }
+
+  // Chutes 1x2 (Equipe Com Mais Finalizações)
+  m = k.match(/^chutes_1x2_total_(ft|ht)_(home|draw|away)$/);
+  if (m) {
+    const period = m[1], dir = m[2];
+    const sel = selecao1x2(dir);
+    const team = dir === 'home' ? home : dir === 'away' ? away : 'Empate';
+    if (period === 'ft') {
+      plans.push({ mercadoEqOrLike: { eq: 'Equipe Com Mais Finalizações (1X2)' }, selecao: sel });
+      plans.push({ mercadoEqOrLike: { eq: 'Equipe Com Mais Finalizações (1X2)' }, selecao: team });
+    } else {
+      plans.push({ mercadoEqOrLike: { eq: '1º Tempo - Finalizações 1X2' }, selecao: sel });
+      plans.push({ mercadoEqOrLike: { eq: '1º Tempo - Finalizações 1X2' }, selecao: team });
+      plans.push({ mercadoEqOrLike: { like: '%Tempo - Equipe Com Mais Finalizações (1X2)' }, selecao: sel });
+      plans.push({ mercadoEqOrLike: { like: '%Tempo - Equipe Com Mais Finalizações (1X2)' }, selecao: team });
+      plans.push({ mercadoEqOrLike: { like: '%Tempo - Time com Mais Finalizações' }, selecao: sel });
+      plans.push({ mercadoEqOrLike: { like: '%Tempo - Time com Mais Finalizações' }, selecao: team });
+    }
+    return plans;
+  }
+
+  // Chutes no gol 1x2 (Equipe Com Mais Chutes no Gol)
+  m = k.match(/^chutes_alvo_1x2_total_(ft|ht)_(home|draw|away)$/);
+  if (m) {
+    const period = m[1], dir = m[2];
+    const sel = selecao1x2(dir);
+    const team = dir === 'home' ? home : dir === 'away' ? away : 'Empate';
+    if (period === 'ft') {
+      plans.push({ mercadoEqOrLike: { eq: 'Equipe Com Mais Chutes no Gol (1X2)' }, selecao: sel });
+      plans.push({ mercadoEqOrLike: { eq: 'Equipe Com Mais Chutes no Gol (1X2)' }, selecao: team });
+    } else {
+      plans.push({ mercadoEqOrLike: { like: '%Tempo - Equipe Com Mais Chutes no Gol (1X2)' }, selecao: sel });
+      plans.push({ mercadoEqOrLike: { like: '%Tempo - Equipe Com Mais Chutes no Gol (1X2)' }, selecao: team });
+      plans.push({ mercadoEqOrLike: { like: '%Tempo - Time com Mais Chutes no Gol' }, selecao: sel });
+      plans.push({ mercadoEqOrLike: { like: '%Tempo - Time com Mais Chutes no Gol' }, selecao: team });
+    }
     return plans;
   }
 
@@ -436,11 +575,13 @@ export function buildLookupPlan(market_key, home, away) {
     const team = scope === 'home' ? home : scope === 'away' ? away : null;
     if (scope === 'total') {
       if (period === 'ft') plans.push({ mercadoEqOrLike: { eq: 'Total de Defesas do Goleiro' }, selecao: sel, linha });
-      else plans.push({ mercadoEqOrLike: { like: '%Tempo - Total de Defesas do Goleiro' }, selecao: sel, linha });
+      else plans.push({ mercadoEqOrLike: { eq: '1º Tempo - Total de Defesas do Goleiro' }, selecao: sel, linha });
     } else if (team) {
       if (period === 'ft') {
+        plans.push({ mercadoEqOrLike: { eq: 'Total de Defesas do Goleiro da Equipe' }, selecao: sel, linha });
         plans.push({ mercadoEqOrLike: { eq: `Total de Defesas do Goleiro ${team}` }, selecao: sel, linha });
       } else {
+        plans.push({ mercadoEqOrLike: { eq: '1º Tempo - Total de Defesas do Goleiro da Equipe' }, selecao: sel, linha });
         plans.push({ mercadoEqOrLike: { like: `%Tempo - Total de Defesas do Goleiro ${team}` }, selecao: sel, linha });
       }
     }
@@ -473,7 +614,29 @@ export function buildLookupPlan(market_key, home, away) {
   }
 
   // ─────────────────────── Faltas ───────────────────────
-  m = k.match(/^faltas_(total|home|away)_ft_(over|under)_(\d+_\d+|\d+)$/);
+  m = k.match(/^faltas_(total|home|away)_(ft|ht)_(over|under)_(\d+_\d+|\d+)$/);
+  if (m) {
+    const scope = m[1], period = m[2], dir = m[3], lineRaw = m[4];
+    const linha = parseLine(lineRaw);
+    if (!linha) return [];
+    const sel = selecaoOverUnder(dir, linha);
+    const team = scope === 'home' ? home : scope === 'away' ? away : null;
+    if (scope === 'total') {
+      if (period === 'ft') plans.push({ mercadoEqOrLike: { eq: 'Total de Faltas' }, selecao: sel, linha });
+      else plans.push({ mercadoEqOrLike: { eq: '1º Tempo - Total de Faltas' }, selecao: sel, linha });
+    } else if (team) {
+      if (period === 'ft') {
+        plans.push({ mercadoEqOrLike: { eq: 'Total de Faltas da Equipe' }, selecao: sel, linha });
+        plans.push({ mercadoEqOrLike: { eq: `${team} - Total de Faltas` }, selecao: sel, linha });
+      } else {
+        plans.push({ mercadoEqOrLike: { eq: '1º Tempo - Total de Faltas da Equipe' }, selecao: sel, linha });
+      }
+    }
+    return plans;
+  }
+
+  // Desarmes
+  m = k.match(/^desarmes_(total|home|away)_ft_(over|under)_(\d+_\d+|\d+)$/);
   if (m) {
     const scope = m[1], dir = m[2], lineRaw = m[3];
     const linha = parseLine(lineRaw);
@@ -481,9 +644,26 @@ export function buildLookupPlan(market_key, home, away) {
     const sel = selecaoOverUnder(dir, linha);
     const team = scope === 'home' ? home : scope === 'away' ? away : null;
     if (scope === 'total') {
-      plans.push({ mercadoEqOrLike: { eq: 'Total de Faltas' }, selecao: sel, linha });
+      plans.push({ mercadoEqOrLike: { eq: 'Total de Desarmes' }, selecao: sel, linha });
     } else if (team) {
-      plans.push({ mercadoEqOrLike: { eq: `${team} - Total de Faltas` }, selecao: sel, linha });
+      plans.push({ mercadoEqOrLike: { eq: 'Total de Desarmes da Equipe' }, selecao: sel, linha });
+      plans.push({ mercadoEqOrLike: { eq: `${team} - Desarmes` }, selecao: sel, linha });
+    }
+    return plans;
+  }
+
+  // Ímpar/Par
+  m = k.match(/^(gols_oddeven|escanteios_oddeven)_total_(ft|ht)_(par|impar)$/);
+  if (m) {
+    const family = m[1], period = m[2], dir = m[3];
+    const selecao = dir === 'par' ? 'Par' : 'Ímpar';
+    if (family === 'gols_oddeven') {
+      const mercado = period === 'ft' ? 'Total de Gols Ímpar/Par' : '1º Tempo - Total de Gols Ímpar/Par';
+      plans.push({ mercadoEqOrLike: { eq: mercado }, selecao });
+    } else if (period === 'ft') {
+      plans.push({ mercadoEqOrLike: { eq: 'Ímpar/Par - Escanteios' }, selecao });
+    } else {
+      plans.push({ mercadoEqOrLike: { eq: '1º Tempo - Escanteios Ímpar/Par' }, selecao });
     }
     return plans;
   }
@@ -491,15 +671,36 @@ export function buildLookupPlan(market_key, home, away) {
   return null;
 }
 
-export function lookupSuperbetOdd(db, { market_key, home, away, data }) {
+export function lookupSuperbetOdd(db, { market_key, id_confronto, home, away, data }) {
+  const cols = oddsColumns(db);
+  const orderBy = cols.has('source_version')
+    ? "CASE WHEN source_version LIKE 'bookline-live%' THEN 0 ELSE 1 END, criado_em DESC"
+    : 'criado_em DESC';
+
+  const direct = lookupByCanonicalMarketKey(db, { market_key, id_confronto, home, away, data }, cols, orderBy);
+  if (direct) return direct;
+
   const plans = buildLookupPlan(market_key, home, away);
-  if (plans === null) return { found: false, reason: 'unmapped_in_motor_catalog' };
+  if (plans === null) {
+    return cols.has('mercado_key')
+      ? { found: false, reason: 'mapped_but_not_offered_by_superbet' }
+      : { found: false, reason: 'unmapped_in_motor_catalog' };
+  }
   if (plans.length === 0) return { found: false, reason: 'mapped_but_invalid_line' };
   const periodPrefix = periodPrefixForMarketKey(market_key);
 
+  const hasIdConfronto = cols.has('id_confronto');
   for (const p of plans) {
-    const where = [`fonte='superbet'`, `home_team=?`, `away_team=?`, `data_jogo=?`];
-    const params = [home, away, data];
+    const where = [];
+    const params = [];
+    appendBooklineSourceFilter(db, where, params);
+    if (id_confronto && hasIdConfronto) {
+      where.push('id_confronto = ?');
+      params.push(id_confronto);
+    } else {
+      where.push('home_team = ?', 'away_team = ?', 'data_jogo = ?');
+      params.push(home, away, data);
+    }
     if (periodPrefix) {
       where.push(`mercado LIKE ?`);
       params.push(`${periodPrefix}% Tempo - %`);
@@ -519,7 +720,12 @@ export function lookupSuperbetOdd(db, { market_key, home, away, data }) {
       where.push(`linha = ?`);
       params.push(p.linha);
     }
-    const sql = `SELECT odd, mercado, selecao, linha FROM odds WHERE ${where.join(' AND ')} ORDER BY criado_em DESC LIMIT 1`;
+    const sql = `
+      SELECT odd, mercado, selecao, linha
+        FROM odds
+       WHERE ${where.join(' AND ')}
+       ORDER BY ${orderBy}
+       LIMIT 1`;
     const r = db.prepare(sql).get(...params);
     if (r) {
       return {
@@ -532,6 +738,37 @@ export function lookupSuperbetOdd(db, { market_key, home, away, data }) {
     }
   }
   return { found: false, reason: 'mapped_but_not_offered_by_superbet' };
+}
+
+function lookupByCanonicalMarketKey(db, { market_key, id_confronto, home, away, data }, cols, orderBy) {
+  if (!cols.has('mercado_key') || !market_key) return null;
+  const where = [];
+  const params = [];
+  appendBooklineSourceFilter(db, where, params);
+  if (id_confronto && cols.has('id_confronto')) {
+    where.push('id_confronto = ?');
+    params.push(id_confronto);
+  } else {
+    where.push('home_team = ?', 'away_team = ?', 'data_jogo = ?');
+    params.push(home, away, data);
+  }
+  where.push('mercado_key = ?');
+  params.push(market_key);
+  const sql = `
+    SELECT odd, mercado, selecao, linha
+      FROM odds
+     WHERE ${where.join(' AND ')}
+     ORDER BY ${orderBy}
+     LIMIT 1`;
+  const r = db.prepare(sql).get(...params);
+  if (!r) return null;
+  return {
+    found: true,
+    odd: r.odd,
+    mercado_superbet: r.mercado,
+    selecao_superbet: r.selecao,
+    linha_superbet: r.linha,
+  };
 }
 
 function periodPrefixForMarketKey(marketKey) {

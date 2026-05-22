@@ -6,7 +6,7 @@
 
 ## Visão de uma linha
 
-Motor de predição **probabilística** com 576 mercados todos abertos (P9 zero-bloqueio), reaproveitando a extração statsline + bookline do FutMax via **dual-write** em SQLite, e construindo calibração própria do zero via **replay histórico** de ~14.998 partidas.
+Motor de predição **probabilística** com 598 mercados todos abertos (P9 zero-bloqueio), usando extração statsline + bookline consolidada em **banco único SQLite** (`data/scout_extraction.db`) e construindo calibração própria do zero via **replay histórico**.
 
 A spec formal está em [`docs/spec/SCOUTCORE_SPEC.md`](docs/spec/SCOUTCORE_SPEC.md).
 
@@ -17,17 +17,17 @@ SCOUTCORE_QUANT/
 ├─ apps/
 │  ├─ api/             # HTTP Fastify — /v1/predict, /v1/settle, /v1/markets
 │  ├─ ml-sidecar/      # Python sidecar (XGB + LGBM via stdio JSON)
-│  └─ jobs/            # Cron: replay-bootstrap, settlement, sync-check
+│  └─ jobs/            # Cron: replay-bootstrap, settlement, extraction scheduler
 ├─ packages/
 │  ├─ contracts/       # Tipos compartilhados
-│  ├─ markets/         # Catálogo SemVer dos 576 mercados
+│  ├─ markets/         # Catálogo SemVer dos 598 mercados
 │  ├─ engine-a/        # Poisson independente
 │  ├─ engine-b-bridge/ # Cliente do sidecar Python
 │  ├─ curinga/         # Meta-arbiter (brier + EWMA + reversal)
 │  ├─ isotonic/        # Calibrador isotônico
-│  ├─ data-access/     # Repository pattern sobre scout.db
+│  ├─ data-access/     # Repository pattern sobre SCOUT_DB
 │  └─ evidence/        # Evidence Pack builder (P8)
-├─ data/scout.db       # NÃO commitado
+├─ data/scout_extraction.db # NÃO commitado
 ├─ migrations/
 ├─ scripts/
 ├─ docs/
@@ -55,13 +55,17 @@ npm install
 copy .env.example .env
 
 # 4. Boot
-npm run setup:copy-legacy   # copia statsline.db -> data/scout.db (one-time)
+npm run extraction:migrate  # cria/atualiza schema do banco único
+npm run single-db:copy      # opcional: importa legado para SCOUT_DB em ambientes novos
 npm run setup:wipe-state    # apaga tabelas de motor antigo
 npm run setup:migrate       # cria tabelas do motor novo
 npm run setup:replay        # replay historico (~10 dias)
 
-# 5. Run
+# 5. Run API em dev
 npm run dev:api
+
+# Windows: boot operacional completo (API + Web + Sidecar + Bot)
+start_extraction_bot.bat
 ```
 
 ## Auditoria real por confronto
@@ -84,17 +88,15 @@ npm run run:audit -- --run-id=run-2026-05-15-to-2026-05-15-avl-liv-cert02 --matc
 
 - **Runtime:** Node 22 ESM + Fastify + better-sqlite3
 - **ML:** Python sidecar (XGBoost + LightGBM) via JSON-over-stdio
-- **DB:** SQLite WAL (motor escreve) + dual-write do FutMax
+- **DB:** SQLite WAL em banco único (`data/scout_extraction.db`)
 - **CI:** GitHub Actions
 
 ## Status
 
-- [x] SPEC v1.4 (zero-bloqueio + dual-write + replay Opção B)
-- [ ] FutMax dual-writer
-- [ ] Cópia inicial scout.db
-- [ ] Migrations do motor novo
-- [ ] Replay histórico
-- [ ] API MVP
+- [x] Banco único em `data/scout_extraction.db`
+- [x] Migração de motor + backtest concluída
+- [x] API + sidecar validados no single-db
+- [ ] Deprecação total dos artefatos legados de dual-write
 
 ---
 

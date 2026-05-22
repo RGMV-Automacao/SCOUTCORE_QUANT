@@ -12,6 +12,7 @@ export function buildDbOddsResolver(db) {
       seen.add(marketKey);
       const lookup = lookupBooklineOdd(db, {
         market_key: marketKey,
+        id_confronto: match.external_id ?? match.id_confronto ?? null,
         home: match.home,
         away: match.away,
         data: match.date,
