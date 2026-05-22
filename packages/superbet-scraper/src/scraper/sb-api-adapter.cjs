@@ -38,6 +38,7 @@ const TEAM_PREFIXED_MAP = Object.freeze({
   // GOLS
   'Total de Gols':                        'Total de Gols da Equipe',
   '1º Tempo - Total de Gols':             '1º Tempo - Total de Gols do Time',
+  '2º Tempo - Total de Gols':             '2º Tempo - Total de Gols',
   // ESCANTEIOS
   'Total de Escanteios':                  'Total de Escanteios da Equipe',
   '1º Tempo - Total de Escanteios':       '1º Tempo - Total de Escanteios da Equipe',
@@ -55,12 +56,17 @@ const TEAM_PREFIXED_MAP = Object.freeze({
   '1º Tempo - Total de Finalizações':     '1º Tempo - Finalizações Totais da Equipe',
   // IMPEDIMENTOS
   'Total de Impedimentos':                'Total de Impedimentos da Equipe',
+  // DEFESAS / DESARMES
+  'Total de Defesas do Goleiro':          'Total de Defesas do Goleiro da Equipe',
+  '1º Tempo - Total de Defesas do Goleiro':'1º Tempo - Total de Defesas do Goleiro da Equipe',
+  'Total de Desarmes':                    'Total de Desarmes da Equipe',
 });
 
 // Pattern C — sufixos curtos (sem "Total de") usados pela API quando vem
 // como "{Time} - {SufixoCurto}" (ex.: "Vasco da Gama - Chutes no Gol").
 const SHORT_TEAM_SUFFIX_MAP = Object.freeze({
   'Chutes no Gol': 'Total de Chutes no Gol da Equipe',
+  'Desarmes': 'Total de Desarmes da Equipe',
 });
 
 // Pattern B — quando a API inverte e vem como "{HeadingTotal} {Time}"
@@ -75,6 +81,8 @@ const SUFFIX_TEAM_MAP = Object.freeze({
   'Total de Faltas':         'Total de Faltas da Equipe',
   'Total de Impedimentos':   'Total de Impedimentos da Equipe',
   'Total de Gols':           'Total de Gols da Equipe',
+  'Total de Defesas do Goleiro': 'Total de Defesas do Goleiro da Equipe',
+  'Total de Desarmes':       'Total de Desarmes da Equipe',
 });
 
 // Pattern D/F — "1º Tempo - <X> de {Time}" e "1º Tempo - Total de <X> de {Time}".
@@ -88,6 +96,7 @@ const FIRST_HALF_DE_MAP = Object.freeze({
   'chutes no gol':   '1º Tempo - Chutes no Gol Totais da Equipe',
   'finalizações':    '1º Tempo - Finalizações Totais da Equipe',
   'finalizacoes':    '1º Tempo - Finalizações Totais da Equipe',
+  'defesas do goleiro': '1º Tempo - Total de Defesas do Goleiro da Equipe',
 });
 
 // Pattern E — "1º Tempo - {Time} {SufixoCurto}". Sufixo (lowercase) → heading.
@@ -100,10 +109,19 @@ const FIRST_HALF_TEAM_SUFFIX_MAP = Object.freeze({
   'cartões':         '1º Tempo - Total de Cartões da Equipe',
   'cartoes':         '1º Tempo - Total de Cartões da Equipe',
   'escanteios':      '1º Tempo - Total de Escanteios da Equipe',
+  'defesas do goleiro': '1º Tempo - Total de Defesas do Goleiro da Equipe',
 });
 
 function _stripDiacritics(s) {
   return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function collectOddTags(odd) {
+  return [odd?.tags, odd?.extra?.tags, odd?.marketTags].filter(Boolean).join(',');
+}
+
+function isCombinableOdd(odd) {
+  return /(^|,)\s*Combinable\s*(,|$)/i.test(collectOddTags(odd));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -259,6 +277,10 @@ function parseApiSelection(name, specifiers, opts) {
   // Sim / Não
   if (s === 'sim' || s === 'yes') return { outcome: 'sim', lineText: null, teamTokFromName: null };
   if (s === 'não' || s === 'nao' || s === 'no') return { outcome: 'nao', lineText: null, teamTokFromName: null };
+
+  // Ímpar / Par
+  if (s === 'par' || s === 'even') return { outcome: 'par', lineText: null, teamTokFromName: null };
+  if (s === 'ímpar' || s === 'impar' || s === 'odd') return { outcome: 'impar', lineText: null, teamTokFromName: null };
 
   // 1X2 e duplas literais
   if (['1', 'x', '2', '1x', '12', 'x2'].includes(s)) {
@@ -455,6 +477,7 @@ function eventToRawEntries(payload, opts) {
 
   for (const o of payload.odds) {
     if (o.status && o.status !== 'active') continue;
+    if (opts?.combinableOnly && !isCombinableOdd(o)) continue;
     const mn = o.marketName;
     const nm = o.name;
     if (!mn || !nm) continue;
@@ -476,6 +499,7 @@ function eventToRawEntries(payload, opts) {
       lineText,
       outcome,
       odd: price,
+      oddUuid: o.uuid || null,
       teamTab: resolvedTeamTab,
       sectionName: mn, // preserva o marketName original para auditoria
     });
@@ -487,6 +511,8 @@ module.exports = {
   parseApiSelection,
   normalizeHeading,
   eventToRawEntries,
+  collectOddTags,
+  isCombinableOdd,
   TEAM_PREFIXED_MAP,
   SHORT_TEAM_SUFFIX_MAP,
   SUFFIX_TEAM_MAP,

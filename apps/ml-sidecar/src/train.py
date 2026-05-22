@@ -108,7 +108,7 @@ def build_dataset(con: sqlite3.Connection, ligas: list[str] | None = None):
     import bisect
     from collections import defaultdict
 
-    where = ["status = 'Played'", "modo = 'FT'", "home_goals IS NOT NULL", "data_partida IS NOT NULL"]
+    where = ["status = 'Played'", "home_goals IS NOT NULL", "data_partida IS NOT NULL"]
     params: list = []
     if ligas:
         placeholders = ",".join("?" * len(ligas))
@@ -124,23 +124,35 @@ def build_dataset(con: sqlite3.Connection, ligas: list[str] | None = None):
     rows = con.execute(sql, params).fetchall()
     print(f"[train] partidas Played: {len(rows)}", flush=True)
 
-    # Pré-carrega totais de eventos_faixa por id_confronto
+    # Pré-carrega totais por (id_confronto, time) a partir de `times` (modo='FT').
+    # Fonte canônica desde a Fase 4 do refactor Superbet v2.0.0; `eventos_faixa`
+    # foi descontinuada como leitura.
     ev_rows = con.execute("""
-        SELECT id_confronto,
-               SUM(escanteios) AS esc,
-               SUM(cartoes_amarelos + cartoes_vermelhos) AS cards,
-               SUM(chutes) AS ch,
-               SUM(chutes_no_alvo) AS sot,
-               SUM(faltas) AS fl
-        FROM eventos_faixa
-        GROUP BY id_confronto
+        SELECT id_confronto, time,
+               escanteios AS esc,
+               COALESCE(cartoes_amarelos, 0) + COALESCE(cartoes_vermelhos, 0) AS cards,
+               chutes AS ch,
+               chutes_no_alvo AS sot,
+               faltas AS fl
+          FROM times
+         WHERE modo = 'FT'
     """).fetchall()
-    ev_total = {}
+    # Agrega home+away por id_confronto (total da partida).
+    ev_total: dict = {}
     for r in ev_rows:
-        ev_total[r[0]] = {
-            "esc": r[1] or 0, "cards": r[2] or 0,
-            "ch": r[3] or 0, "sot": r[4] or 0, "fl": r[5] or 0,
-        }
+        idc = r[0]
+        cur = ev_total.get(idc)
+        if cur is None:
+            ev_total[idc] = {
+                "esc": r[2] or 0, "cards": r[3] or 0,
+                "ch": r[4] or 0, "sot": r[5] or 0, "fl": r[6] or 0,
+            }
+        else:
+            cur["esc"]   += r[2] or 0
+            cur["cards"] += r[3] or 0
+            cur["ch"]    += r[4] or 0
+            cur["sot"]   += r[5] or 0
+            cur["fl"]    += r[6] or 0
 
     # H2H index: (liga, home, away) → [(data, home_goals, away_goals)]
     h2h_idx: dict[tuple, list] = defaultdict(list)
@@ -195,14 +207,14 @@ def build_dataset(con: sqlite3.Connection, ligas: list[str] | None = None):
                 else:
                     pts5.append(3 if ag > hg else (1 if hg == ag else 0))
 
-            # Contagem
-            ev = ev_total.get(idc)
+            # Contagem — `times` per-team direto (não dividir).
+            ev = ev_total.get((idc, team))
             if ev is not None:
-                esc_list.append(ev["esc"] / 2)
-                ch_list.append(ev["ch"] / 2)
-                sot_list.append(ev["sot"] / 2)
-                fl_list.append(ev["fl"] / 2)
-                cards_list.append(ev["cards"] / 2)
+                esc_list.append(ev["esc"])
+                ch_list.append(ev["ch"])
+                sot_list.append(ev["sot"])
+                fl_list.append(ev["fl"])
+                cards_list.append(ev["cards"])
 
         if not gm:
             return None
@@ -478,6 +490,7 @@ def main():
 
     t_train = time.perf_counter()
     trained, skipped = 0, 0
+    trained_names = set()
     for name, target_y in sorted(ys.items()):
         res = train_one(X, target_y, name)
         manifest["models"].append(res)
@@ -486,17 +499,27 @@ def main():
             print(f"  SKIP {name}: {res.get('reason')} (n={res.get('n')})", flush=True)
         else:
             trained += 1
+            trained_names.add(name)
             print(f"  OK   {name}: brier={res['wf_avg_brier']:.4f} ll={res['wf_avg_log_loss']:.4f} "
                   f"n={res['n']} folds={res['wf_folds']} backend={res['backend']}", flush=True)
 
+    removed_stale = []
+    for file in MODELS_DIR.glob("*.joblib"):
+        if file.stem not in trained_names:
+            file.unlink()
+            removed_stale.append(file.name)
+
     manifest["total_trained"] = trained
     manifest["total_skipped"] = skipped
+    manifest["stale_models_removed"] = sorted(removed_stale)
     manifest["train_seconds"] = round(time.perf_counter() - t_train, 1)
     manifest["total_seconds"] = round(time.perf_counter() - t0, 1)
 
     with open(MODELS_DIR / "manifest.json", "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
     print(f"\n[train] Done: {trained} trained, {skipped} skipped in {manifest['total_seconds']}s", flush=True)
+    if removed_stale:
+        print(f"[train] stale models removed: {', '.join(sorted(removed_stale))}", flush=True)
     print(f"[train] manifest -> {MODELS_DIR / 'manifest.json'}", flush=True)
 
 

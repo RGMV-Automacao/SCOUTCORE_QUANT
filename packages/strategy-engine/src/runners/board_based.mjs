@@ -21,6 +21,8 @@ function extractGates(params) {
     oddCombinedMaxException: params.odd_combo_exception ?? 3.80,
     builderDiscountBase: params.builder_discount ?? 0.854,
     builderDiscountMinLegs: params.builder_discount_min_legs ?? 3,
+    comboEvMin: params.combo_ev_min ?? 0,
+    correlationPenalties: params.correlation_penalties,
     oddMinLeg: params.odd_leg_range?.[0] ?? 1.20,
     oddMaxLeg: params.odd_leg_range?.[1] ?? 2.10,
     suspendedFamilies: new Set(params.suspended_families ?? []),
@@ -42,6 +44,7 @@ function extractGates(params) {
     supportedN: params.n_confrontos ?? [10, 12],
     stakePerCombo: params.stake_per_ticket_brl ?? 3,
     minN: params.min_confrontos ?? 10,
+    excludedMatchIds: new Set(params.excluded_match_ids ?? []),
   };
 }
 
@@ -57,6 +60,7 @@ export function run(slots, params = {}) {
   const byMatch = new Map();
   for (const s of slots) {
     const key = s.match_id ?? s.opta_match_id ?? 'unknown';
+    if (gates.excludedMatchIds.has(key)) continue;
     if (!byMatch.has(key)) byMatch.set(key, []);
     byMatch.get(key).push(s);
   }

@@ -44,7 +44,7 @@ pip install -r requirements.txt
 ## Treinar
 
 ```bash
-SCOUT_DB="C:\path\to\scout.db" python src/train.py
+SCOUT_DB="C:\path\to\scout_extraction.db" python src/train.py
 ```
 
 Saída: `models/{target}.joblib` + `models/manifest.json`.
@@ -52,7 +52,7 @@ Saída: `models/{target}.joblib` + `models/manifest.json`.
 ## Servir
 
 ```bash
-SCOUT_DB="C:\path\to\scout.db" uvicorn src.server:app --host 127.0.0.1 --port 4055
+SCOUT_DB="C:\path\to\scout_extraction.db" uvicorn src.server:app --host 127.0.0.1 --port 4055
 ```
 
 Health: `http://127.0.0.1:4055/health`.

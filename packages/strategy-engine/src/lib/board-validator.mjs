@@ -78,6 +78,8 @@ function comboLeague(combo) {
 }
 
 function comboRank(combo) {
+  const explicitRank = Number(combo?.rank_score);
+  if (Number.isFinite(explicitRank)) return explicitRank;
   const quality = Number(combo?.quality_score ?? 0);
   const jointProb = Number(combo?.joint_prob ?? 0);
   const odd = Number(combo?.combo_odd ?? 0);
@@ -236,6 +238,10 @@ export function validateConfronto(combo, gates) {
     reasons.push('combo_odd ausente');
   } else if (combo.combo_odd < gates.oddMin || combo.combo_odd > oddMaxEffective) {
     reasons.push(`combo_odd ${combo.combo_odd} fora de [${gates.oddMin}, ${oddMaxEffective}]`);
+  }
+
+  if (combo.combo_ev != null && combo.combo_ev < (gates.comboEvMin ?? -Infinity)) {
+    reasons.push(`combo_ev ${combo.combo_ev} < ${gates.comboEvMin}`);
   }
 
   for (const leg of legs) {

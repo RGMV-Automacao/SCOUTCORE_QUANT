@@ -18,7 +18,9 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH  = path.resolve(__dirname, '..', '..', 'data', 'scout.db');
+const DB_PATH  = process.env.SCOUT_DB
+  ? path.resolve(process.env.SCOUT_DB)
+  : path.resolve(__dirname, '..', '..', 'data', 'scout_extraction.db');
 const OUT_DIR  = path.resolve(__dirname, '..', '..', 'audit', 'backtest');
 fs.mkdirSync(OUT_DIR, { recursive: true });
 

@@ -1,0 +1,397 @@
+{
+  "generated_at": "2026-05-19T15:55:35.959Z",
+  "db_path": "data/scout_extraction.db",
+  "out_dir": "C:\\Users\\Rogerio\\Desktop\\RGMV_PROJETOS\\SCOUTCORE_QUANT\\audit\\motors-2026-05-19",
+  "metrics": {
+    "backtest": {
+      "outcomes": 14186,
+      "predictions": 5152024,
+      "eval_rows": 5152024,
+      "pred_matches": 12296,
+      "ligas": 13,
+      "families": 17,
+      "market_groups": 95,
+      "outcome_distribution": [
+        {
+          "outcome": "red",
+          "n": 2619048
+        },
+        {
+          "outcome": "green",
+          "n": 2532976
+        }
+      ],
+      "coverage_by_family_rows": 95,
+      "coverage_by_liga_family_rows": 1235
+    },
+    "calibration": {
+      "isotonic_blobs": 374,
+      "eval_groups": 1235,
+      "groups_with_specific_fit": 279,
+      "groups_with_effective_fit": 1235,
+      "groups_without_effective_fit": 0,
+      "large_groups_without_fit": 0,
+      "fast_mode": true,
+      "calib_state_rows": 756,
+      "non_a_rows": 0,
+      "bad_hr": 0,
+      "bad_brier": 0,
+      "below_min_sample": 0,
+      "ewma_warmup": {
+        "maxDate": "2026-05-18",
+        "warmupCutoff": "2026-03-19",
+        "expected_rows": 756,
+        "missing_rows": 0,
+        "extra_rows": 0,
+        "fast_mode": true
+      },
+      "calibration_gain_md_head": "# Calibration Gain Report\n\nGerado: 2026-05-19T10:50:12.027Z\nCurvas isotônicas carregadas: 374\nAmostras (com fit aplicável): 5.152.024\n\n## Resumo (média ponderada por n)\n\n| Métrica           | RAW           | Calibrado     | Δ              |\n|-------------------|---------------|---------------|----------------|\n| Brier             | 0.198390 | 0.185694 | -0.012696 (-6.40%) |\n| \\|gap\\| médio      | 0.047673 | 0.006442 | -0.041231 |\n\nBuckets melhorados: **1101/1235**  ·  piorados: 134/1235\n\n## Top 10 maiores ganhos (Δ Brier mais negativo)\n\n| Liga | Family | Period | Direction | n | cov | Brier raw | Brier cal | Δ Brier |\n|------|--------|--------|-----------|---|-----|-----------|-----------|---------|\n| superliga-argentina | escanteios_handicap | FT | away_minus_4_5 | 587 | 100% | 0.6938 | 0.0633 | -0.6305 |"
+    },
+    "profiles": {
+      "profiles": {
+        "latest_rows": 2418,
+        "latest_as_of": "2026-05-19",
+        "avg_desarmes_rows": 2418,
+        "avg_goals_rows": 2418
+      },
+      "priors": {
+        "latest_rows": 120,
+        "latest_as_of": "2026-05-19",
+        "avg_desarmes_total_rows": 40,
+        "avg_goals_total_rows": 120
+      }
+    },
+    "prediction": {
+      "rows": 10714,
+      "runs": 22,
+      "matches": 22,
+      "certified_rows": 39,
+      "certified_without_odd": 0,
+      "certified_without_edge": 0,
+      "bad_fair_prob": 0,
+      "bad_confidence": 0,
+      "bad_provenance_json": 0,
+      "odds_coverage": {
+        "run_matches": 22,
+        "matches_with_any_odd": 6,
+        "matches_with_certified": 6,
+        "matches_without_odds": 16,
+        "matches_with_odds_no_certified": 0
+      }
+    },
+    "ml": {
+      "manifest_path": "C:\\Users\\Rogerio\\Desktop\\RGMV_PROJETOS\\SCOUTCORE_QUANT\\apps\\ml-sidecar\\models\\manifest.json",
+      "missing": false,
+      "version": "0.4.0",
+      "feature_set": "v3",
+      "n_features": 32,
+      "trained": 28,
+      "skipped": 0,
+      "bad_models": 0,
+      "joblib_files": 28,
+      "stale_model_files": [],
+      "backends_available": {
+        "xgboost": true,
+        "lightgbm": true,
+        "sklearn_gbc": true
+      }
+    }
+  },
+  "tables": {
+    "present": [
+      "backtest_eval",
+      "backtest_outcomes",
+      "backtest_predictions",
+      "calib_state",
+      "isotonic_blob",
+      "league_priors",
+      "prediction",
+      "team_profile_v2"
+    ]
+  },
+  "checks": [
+    {
+      "id": "BT-001",
+      "severity": "CRITICAL",
+      "status": "PASS",
+      "title": "Cada slot de backtest tem avaliação",
+      "details": "5152024 predictions vs 5152024 eval rows",
+      "evidence": {
+        "outcomes": 14186,
+        "predictions": 5152024,
+        "eval_rows": 5152024,
+        "pred_matches": 12296,
+        "ligas": 13,
+        "families": 17,
+        "market_groups": 95,
+        "outcome_distribution": [
+          {
+            "outcome": "red",
+            "n": 2619048
+          },
+          {
+            "outcome": "green",
+            "n": 2532976
+          }
+        ],
+        "coverage_by_family_rows": 95,
+        "coverage_by_liga_family_rows": 1235
+      }
+    },
+    {
+      "id": "BT-002",
+      "severity": "CRITICAL",
+      "status": "PASS",
+      "title": "Sem órfãos entre predictions e eval",
+      "details": "missing_eval=0; orphan_eval=0",
+      "evidence": {
+        "missingEval": 0,
+        "orphanEval": 0
+      }
+    },
+    {
+      "id": "BT-003",
+      "severity": "CRITICAL",
+      "status": "PASS",
+      "title": "Settling coerente com observed",
+      "details": "observed_mismatch=0; null_observed=0; outcomes=[{\"outcome\":\"red\",\"n\":2619048},{\"outcome\":\"green\",\"n\":2532976}]",
+      "evidence": {
+        "observedMismatch": 0,
+        "nullObserved": 0,
+        "outcomeDist": [
+          {
+            "outcome": "red",
+            "n": 2619048
+          },
+          {
+            "outcome": "green",
+            "n": 2532976
+          }
+        ]
+      }
+    },
+    {
+      "id": "BT-004",
+      "severity": "CRITICAL",
+      "status": "PASS",
+      "title": "Probabilidades e fair_odd válidos no backtest",
+      "details": "{\"bad_fair_prob\":0,\"bad_fair_prob_raw\":0,\"bad_fair_odd\":0,\"null_fair_odd\":0}",
+      "evidence": {
+        "bad_fair_prob": 0,
+        "bad_fair_prob_raw": 0,
+        "bad_fair_odd": 0,
+        "null_fair_odd": 0
+      }
+    },
+    {
+      "id": "BT-005",
+      "severity": "HIGH",
+      "status": "PASS",
+      "title": "Families/period/direction dentro do contrato",
+      "details": "unknown_families=none; unknown_periods=none; null_directions=0",
+      "evidence": {
+        "dbFamilies": [
+          "1x2",
+          "btts",
+          "cartoes",
+          "cartoes_1x2",
+          "chutes",
+          "chutes_1x2",
+          "chutes_alvo",
+          "chutes_alvo_1x2",
+          "dupla",
+          "escanteios",
+          "escanteios_1x2",
+          "escanteios_handicap",
+          "escanteios_oddeven",
+          "faltas",
+          "gols",
+          "gols_oddeven",
+          "impedimentos"
+        ],
+        "dbPeriods": [
+          "2T",
+          "FT",
+          "HT"
+        ],
+        "unknownFamilies": [],
+        "unknownPeriods": [],
+        "nullDirections": 0
+      }
+    },
+    {
+      "id": "CAL-001",
+      "severity": "CRITICAL",
+      "status": "PASS",
+      "title": "Todo grupo de backtest tem fit isotônico efetivo",
+      "details": "effective=1235/1235; missing=0",
+      "evidence": {
+        "isotonic_blobs": 374,
+        "eval_groups": 1235,
+        "groups_with_specific_fit": 279,
+        "groups_with_effective_fit": 1235,
+        "groups_without_effective_fit": 0,
+        "large_groups_without_fit": 0,
+        "fast_mode": true
+      }
+    },
+    {
+      "id": "CAL-002",
+      "severity": "HIGH",
+      "status": "PASS",
+      "title": "calib_state EWMA válido",
+      "details": "{\"calib_state_rows\":756,\"non_a_rows\":0,\"bad_hr\":0,\"bad_brier\":0,\"below_min_sample\":0}",
+      "evidence": {
+        "calib_state_rows": 756,
+        "non_a_rows": 0,
+        "bad_hr": 0,
+        "bad_brier": 0,
+        "below_min_sample": 0
+      }
+    },
+    {
+      "id": "CAL-003",
+      "severity": "HIGH",
+      "status": "PASS",
+      "title": "EWMA warmup 60d cobre exatamente as chaves esperadas",
+      "details": "cutoff=2026-03-19; expected=756; missing=0; extra=0",
+      "evidence": {
+        "maxDate": "2026-05-18",
+        "warmupCutoff": "2026-03-19",
+        "expected_rows": 756,
+        "missing_rows": 0,
+        "extra_rows": 0,
+        "fast_mode": true
+      }
+    },
+    {
+      "id": "DATA-001",
+      "severity": "HIGH",
+      "status": "PASS",
+      "title": "Perfis e priors FT atuais incluem desarmes",
+      "details": "profiles 2418/2418; FT priors 40/40; all periods 40/120",
+      "evidence": {
+        "profiles": {
+          "latest_rows": 2418,
+          "latest_as_of": "2026-05-19",
+          "avg_desarmes_rows": 2418,
+          "avg_goals_rows": 2418
+        },
+        "priors": {
+          "latest_rows": 120,
+          "latest_as_of": "2026-05-19",
+          "avg_desarmes_total_rows": 40,
+          "avg_goals_total_rows": 120
+        },
+        "ftPriors": {
+          "latest_rows": 40,
+          "avg_desarmes_total_rows": 40
+        }
+      }
+    },
+    {
+      "id": "DATA-002",
+      "severity": "MEDIUM",
+      "status": "WARN",
+      "title": "HT/2T priors não carregam eventos por desenho",
+      "details": "rebuild-league-priors anexa eventos somente em FT; HT/2T preservam apenas gols/btts/over_25.",
+      "evidence": {
+        "priors": {
+          "latest_rows": 120,
+          "latest_as_of": "2026-05-19",
+          "avg_desarmes_total_rows": 40,
+          "avg_goals_total_rows": 120
+        }
+      }
+    },
+    {
+      "id": "LIVE-001",
+      "severity": "CRITICAL",
+      "status": "PASS",
+      "title": "Predictions persistidas estão aptas para front",
+      "details": "{\"rows\":10714,\"runs\":22,\"matches\":22,\"certified_rows\":39,\"certified_without_odd\":0,\"certified_without_edge\":0,\"bad_fair_prob\":0,\"bad_confidence\":0,\"bad_provenance_json\":0}",
+      "evidence": {
+        "rows": 10714,
+        "runs": 22,
+        "matches": 22,
+        "certified_rows": 39,
+        "certified_without_odd": 0,
+        "certified_without_edge": 0,
+        "bad_fair_prob": 0,
+        "bad_confidence": 0,
+        "bad_provenance_json": 0,
+        "odds_coverage": {
+          "run_matches": 22,
+          "matches_with_any_odd": 6,
+          "matches_with_certified": 6,
+          "matches_without_odds": 16,
+          "matches_with_odds_no_certified": 0
+        }
+      }
+    },
+    {
+      "id": "LIVE-002",
+      "severity": "HIGH",
+      "status": "WARN",
+      "title": "Cobertura de odds por confronto para produto front",
+      "details": "matches_with_any_odd=6/22; sem_odds=16; with_odds_no_certified=0",
+      "evidence": {
+        "run_matches": 22,
+        "matches_with_any_odd": 6,
+        "matches_with_certified": 6,
+        "matches_without_odds": 16,
+        "matches_with_odds_no_certified": 0
+      }
+    },
+    {
+      "id": "ML-001",
+      "severity": "HIGH",
+      "status": "PASS",
+      "title": "ML sidecar treinado com todos os modelos esperados",
+      "details": "trained=28; skipped=0; n_features=32; joblib_files=28; stale=none",
+      "evidence": {
+        "manifest_path": "C:\\Users\\Rogerio\\Desktop\\RGMV_PROJETOS\\SCOUTCORE_QUANT\\apps\\ml-sidecar\\models\\manifest.json",
+        "missing": false,
+        "version": "0.4.0",
+        "feature_set": "v3",
+        "n_features": 32,
+        "trained": 28,
+        "skipped": 0,
+        "bad_models": 0,
+        "joblib_files": 28,
+        "stale_model_files": [],
+        "backends_available": {
+          "xgboost": true,
+          "lightgbm": true,
+          "sklearn_gbc": true
+        }
+      }
+    },
+    {
+      "id": "CAL-004",
+      "severity": "MEDIUM",
+      "status": "PASS",
+      "title": "Relatório de ganho de calibração existe",
+      "details": "audit/backtest/calibration_gain.md encontrado",
+      "evidence": {}
+    }
+  ],
+  "notes": [
+    "Modo --fast: cobertura por família/ligas reaproveitada dos CSVs já gerados em audit/backtest e audit/motors.",
+    "Este script certifica coerência quantitativa dos artefatos atuais. Ele não prova ausência absoluta de bug futuro nem substitui teste runtime das rotas HTTP.",
+    "Gaps de observabilidade em fair_prob_raw/fair_prob pós-curinga/isotonic não quebram o fluxo atual, mas limitam auditoria forense de probabilidade por etapa.",
+    "Engine B offline é degradada por desenho para A-only; para certificação operacional, validar /v1/health com sidecar reachable=true."
+  ],
+  "verdict": {
+    "quantitative_status": "PASS_WITH_WARNINGS",
+    "runtime_status": "NOT_EXECUTED_BY_THIS_SCRIPT",
+    "assurance": "Motores/backtest sem falhas criticas/altas; ha warnings operacionais que impedem garantia total de produto front sem ressalvas."
+  },
+  "summary_by_status": {
+    "CRITICAL:PASS": 6,
+    "HIGH:PASS": 5,
+    "MEDIUM:WARN": 1,
+    "HIGH:WARN": 1,
+    "MEDIUM:PASS": 1
+  }
+}

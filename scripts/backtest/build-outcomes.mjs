@@ -19,7 +19,9 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.resolve(__dirname, '..', '..', 'data', 'scout.db');
+const DB_PATH = process.env.SCOUT_DB
+  ? path.resolve(process.env.SCOUT_DB)
+  : path.resolve(__dirname, '..', '..', 'data', 'scout_extraction.db');
 
 const args = parseArgs(process.argv.slice(2));
 const db = new Database(DB_PATH);

@@ -1,6 +1,6 @@
 // rebuild-team-profiles.mjs
 //
-// Recomputa team_profile_v2 a partir de partidas + eventos_faixa em scout.db.
+// Recomputa team_profile_v2 a partir de partidas + times (FT) + jogadores em SCOUT_DB.
 // Independente do FutMax legacy. PIT-aware: aceita --as-of=YYYY-MM-DD.
 //
 // Uso:
@@ -10,9 +10,10 @@
 // Métricas computadas (FT, side-aware):
 //   n, avg_gols_marcados, avg_gols_sofridos, avg_gols_total,
 //   avg_escanteios, avg_escanteios_sofridos,
-//   avg_chutes, avg_chutes_no_alvo,
+//   avg_chutes, avg_chutes_alvo,
 //   avg_cartoes_amarelos, avg_cartoes_vermelhos,
-//   avg_faltas_cometidas
+//   avg_faltas_cometidas,
+//   avg_impedimentos, avg_defesas, avg_desarmes
 
 import 'dotenv/config';
 import Database from 'better-sqlite3';
@@ -64,15 +65,19 @@ if (partidas.length === 0) {
   process.exit(0);
 }
 
-// 2. Eventos_faixa agregados por (id_confronto, time)
-const eventsByMatchTeam = new Map(); // key: `${id_confronto}::${time}`
-for (const id of new Set(partidas.map((p) => p.id_confronto))) {
-  const rows = db.prepare(`
-    SELECT time, SUM(escanteios) AS escanteios, SUM(chutes) AS chutes,
-           SUM(chutes_no_alvo) AS chutes_no_alvo, SUM(faltas) AS faltas,
-           SUM(cartoes_amarelos) AS cartoes_amarelos, SUM(cartoes_vermelhos) AS cartoes_vermelhos
-      FROM eventos_faixa WHERE id_confronto = ? GROUP BY time`).all(id);
-  for (const r of rows) eventsByMatchTeam.set(`${id}::${r.time}`, r);
+// 2. Stats agregadas por (id_confronto, time) — fonte única `times` (modo='FT'),
+//    com `desarmes` vindo direto do team-stat oficial (statsline totalTackle).
+const idList = [...new Set(partidas.map((p) => p.id_confronto))];
+const inPlace = idList.map(() => '?').join(',');
+const statsByMatchTeam = new Map(); // key: `${id_confronto}::${time}`
+if (idList.length > 0) {
+  for (const r of db.prepare(`
+    SELECT id_confronto, time, side, gols, escanteios, chutes, chutes_no_alvo AS chutes_alvo,
+           faltas, cartoes_amarelos, cartoes_vermelhos, impedimentos, defesas, desarmes
+      FROM times
+     WHERE modo = 'FT' AND id_confronto IN (${inPlace})`).all(...idList)) {
+    statsByMatchTeam.set(`${r.id_confronto}::${r.time}`, r);
+  }
 }
 
 // 3. Agrega por (team, side).
@@ -81,10 +86,11 @@ function emptyAgg() {
     n: 0,
     sum_gols_marcados: 0, sum_gols_sofridos: 0,
     sum_escanteios: 0, sum_escanteios_sofridos: 0,
-    sum_chutes: 0, sum_chutes_no_alvo: 0,
+    sum_chutes: 0, sum_chutes_alvo: 0,
     sum_cartoes_amarelos: 0, sum_cartoes_vermelhos: 0,
     sum_faltas: 0,
-    n_events: 0,
+    sum_impedimentos: 0, sum_defesas: 0, sum_desarmes: 0,
+    n_events: 0, n_desarmes: 0,
   };
 }
 const agg = new Map(); // key: `${team}::${side}`
@@ -93,41 +99,37 @@ function bump(team, side, p, evHome, evAway) {
   const k = `${team}::${side}`;
   const a = agg.get(k) ?? emptyAgg();
   a.n += 1;
+  const own = side === 'home' ? evHome : evAway;
+  const opp = side === 'home' ? evAway : evHome;
   if (side === 'home') {
     a.sum_gols_marcados += p.home_goals ?? 0;
     a.sum_gols_sofridos += p.away_goals ?? 0;
-    if (evHome) {
-      a.n_events += 1;
-      a.sum_escanteios += evHome.escanteios ?? 0;
-      a.sum_escanteios_sofridos += evAway?.escanteios ?? 0;
-      a.sum_chutes += evHome.chutes ?? 0;
-      a.sum_chutes_no_alvo += evHome.chutes_no_alvo ?? 0;
-      a.sum_cartoes_amarelos += evHome.cartoes_amarelos ?? 0;
-      a.sum_cartoes_vermelhos += evHome.cartoes_vermelhos ?? 0;
-      a.sum_faltas += evHome.faltas ?? 0;
-    }
   } else {
     a.sum_gols_marcados += p.away_goals ?? 0;
     a.sum_gols_sofridos += p.home_goals ?? 0;
-    if (evAway) {
-      a.n_events += 1;
-      a.sum_escanteios += evAway.escanteios ?? 0;
-      a.sum_escanteios_sofridos += evHome?.escanteios ?? 0;
-      a.sum_chutes += evAway.chutes ?? 0;
-      a.sum_chutes_no_alvo += evAway.chutes_no_alvo ?? 0;
-      a.sum_cartoes_amarelos += evAway.cartoes_amarelos ?? 0;
-      a.sum_cartoes_vermelhos += evAway.cartoes_vermelhos ?? 0;
-      a.sum_faltas += evAway.faltas ?? 0;
+  }
+  if (own) {
+    a.n_events += 1;
+    a.sum_escanteios += own.escanteios ?? 0;
+    a.sum_escanteios_sofridos += opp?.escanteios ?? 0;
+    a.sum_chutes += own.chutes ?? 0;
+    a.sum_chutes_alvo += own.chutes_alvo ?? 0;
+    a.sum_cartoes_amarelos += own.cartoes_amarelos ?? 0;
+    a.sum_cartoes_vermelhos += own.cartoes_vermelhos ?? 0;
+    a.sum_faltas += own.faltas ?? 0;
+    a.sum_impedimentos += own.impedimentos ?? 0;
+    a.sum_defesas += own.defesas ?? 0;
+    if (own.desarmes != null) {
+      a.sum_desarmes += own.desarmes;
+      a.n_desarmes += 1;
     }
   }
   agg.set(k, a);
 }
 
 for (const p of partidas) {
-  const evHome = eventsByMatchTeam.get(`${p.id_confronto}::Casa`)
-              ?? eventsByMatchTeam.get(`${p.id_confronto}::${p.home_team}`);
-  const evAway = eventsByMatchTeam.get(`${p.id_confronto}::Visitante`)
-              ?? eventsByMatchTeam.get(`${p.id_confronto}::${p.away_team}`);
+  const evHome = statsByMatchTeam.get(`${p.id_confronto}::${p.home_team}`);
+  const evAway = statsByMatchTeam.get(`${p.id_confronto}::${p.away_team}`);
   bump(p.home_team, 'home', p, evHome, evAway);
   bump(p.away_team, 'away', p, evHome, evAway);
 }
@@ -156,6 +158,7 @@ const tx = db.transaction(() => {
     const [team, side] = k.split('::');
     if (a.n === 0) continue;
     const ne = Math.max(1, a.n_events);
+    const nd = Math.max(1, a.n_desarmes);
     const payload = {
       avg_gols_marcados: a.sum_gols_marcados / a.n,
       avg_gols_sofridos: a.sum_gols_sofridos / a.n,
@@ -163,11 +166,15 @@ const tx = db.transaction(() => {
       avg_escanteios: a.sum_escanteios / ne,
       avg_escanteios_sofridos: a.sum_escanteios_sofridos / ne,
       avg_chutes: a.sum_chutes / ne,
-      avg_chutes_no_alvo: a.sum_chutes_no_alvo / ne,
+      avg_chutes_alvo: a.sum_chutes_alvo / ne,
       avg_cartoes_amarelos: a.sum_cartoes_amarelos / ne,
       avg_cartoes_vermelhos: a.sum_cartoes_vermelhos / ne,
       avg_faltas_cometidas: a.sum_faltas / ne,
+      avg_impedimentos: a.sum_impedimentos / ne,
+      avg_defesas: a.sum_defesas / ne,
+      avg_desarmes: a.n_desarmes > 0 ? a.sum_desarmes / nd : null,
       n_events: a.n_events,
+      n_desarmes: a.n_desarmes,
     };
     stmt.run(team, liga, temporada, side, asOf === '9999-12-31' ? new Date().toISOString().slice(0, 10) : asOf, a.n, JSON.stringify(payload));
   }

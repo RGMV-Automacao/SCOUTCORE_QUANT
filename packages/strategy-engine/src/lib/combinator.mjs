@@ -8,6 +8,7 @@
 
 import { checkContradiction } from './contradiction.mjs';
 import { getStrategyEngineGovernance } from '@scoutcore/quality-gates';
+import { comboCorrelationFactor, DEFAULT_CORRELATION_PENALTIES } from './correlation.mjs';
 import { normalizeFamily } from './family-aliases.mjs';
 
 const STRATEGY_ENGINE_GOVERNANCE = getStrategyEngineGovernance();
@@ -20,6 +21,22 @@ function reliabilityOf(family) {
 
 function directionGroup(slot) {
   return `${normalizeFamily(slot.family)}|${slot.scope}|${slot.period}|${slot.direction}`;
+}
+
+function resolveDiscount(legs, gates) {
+  const minDiscountLegs = gates.builderDiscountMinLegs ?? 3;
+  const baseDiscount = legs.length >= minDiscountLegs ? gates.builderDiscountBase : 1.0;
+  const correlationFactor = comboCorrelationFactor(
+    legs,
+    gates.correlationPenalties ?? DEFAULT_CORRELATION_PENALTIES,
+  );
+  const effectiveDiscount = Math.min(baseDiscount, correlationFactor);
+
+  return {
+    baseDiscount: Number(baseDiscount.toFixed(4)),
+    correlationFactor: Number(correlationFactor.toFixed(4)),
+    effectiveDiscount: Number(effectiveDiscount.toFixed(4)),
+  };
 }
 
 export function selectCandidates(slots, gates) {
@@ -70,20 +87,23 @@ function* combinations(arr, k) {
 
 function scoreSubset(legs, gates) {
   const jointProb = legs.reduce((p, l) => p * (l.fair_prob ?? 0.5), 1);
+  const probGeo = Math.pow(jointProb, 1 / legs.length);
   const odds = legs.map((l) => l.market_odd);
   const sbProduct = odds.reduce((p, o) => p * o, 1);
-  const minDiscountLegs = gates.builderDiscountMinLegs ?? 3;
-  const disc = legs.length >= minDiscountLegs ? gates.builderDiscountBase : 1.0;
+  const discount = resolveDiscount(legs, gates);
   const comboOddBruta = sbProduct;
-  const comboOdd = Number((sbProduct * disc).toFixed(3));
+  const comboOdd = Number((sbProduct * discount.effectiveDiscount).toFixed(3));
 
   const families = [...new Set(legs.map((l) => normalizeFamily(l.family)))];
   const trustedCount = legs.filter((l) => TRUSTED_FAMILIES.has(normalizeFamily(l.family))).length;
+  const trustedRatio = trustedCount / legs.length;
   const avgReliability = legs.reduce((s, l) => s + reliabilityOf(l.family), 0) / legs.length;
+  const comboEv = jointProb > 0 && comboOdd > 0 ? (jointProb * comboOdd) - 1 : -1;
 
   const qualityScore = Number(
-    (trustedCount * 2.0 + avgReliability + jointProb).toFixed(4),
+    (trustedRatio * 2.0 + avgReliability + probGeo).toFixed(4),
   );
+  const rankScore = Number((qualityScore + comboEv).toFixed(4));
 
   return {
     legs,
@@ -92,11 +112,16 @@ function scoreSubset(legs, gates) {
     families,
     combo_odd: comboOdd,
     combo_odd_bruta: Number(comboOddBruta.toFixed(3)),
-    builder_discount: Number(disc.toFixed(3)),
+    builder_discount: Number(discount.effectiveDiscount.toFixed(3)),
+    builder_discount_base: Number(discount.baseDiscount.toFixed(3)),
+    correlation_factor: Number(discount.correlationFactor.toFixed(3)),
     joint_prob: Number(jointProb.toFixed(6)),
+    prob_geo: Number(probGeo.toFixed(6)),
     trusted_count: trustedCount,
     avg_reliability: Number(avgReliability.toFixed(3)),
     quality_score: qualityScore,
+    combo_ev: Number(comboEv.toFixed(4)),
+    rank_score: rankScore,
   };
 }
 
@@ -125,9 +150,10 @@ function findBestSubset(pool, gates) {
       if (scored.n_families !== scored.n_legs) continue;
       if (scored.combo_odd < gates.oddCombinedMin) continue;
       if (scored.combo_odd > oddMaxForN) continue;
+      if (scored.combo_ev < (gates.comboEvMin ?? -Infinity)) continue;
 
-      if (scored.quality_score > bestScore) {
-        bestScore = scored.quality_score;
+      if (scored.rank_score > bestScore) {
+        bestScore = scored.rank_score;
         best = { ...scored, is_exception: isException, n_legs_target: n };
       }
     }
@@ -173,9 +199,16 @@ export function buildCombo(slots, gates) {
     match_id: matchId, status: 'ready', legs: best.legs,
     n_legs: best.n_legs, n_families: best.n_families, families: best.families,
     combo_odd: best.combo_odd, combo_odd_bruta: best.combo_odd_bruta,
-    builder_discount: best.builder_discount, joint_prob: best.joint_prob,
+    builder_discount: best.builder_discount,
+    builder_discount_base: best.builder_discount_base,
+    correlation_factor: best.correlation_factor,
+    joint_prob: best.joint_prob,
+    prob_geo: best.prob_geo,
     trusted_count: best.trusted_count, avg_reliability: best.avg_reliability,
-    quality_score: best.quality_score, is_exception: best.is_exception,
+    quality_score: best.quality_score,
+    combo_ev: best.combo_ev,
+    rank_score: best.rank_score,
+    is_exception: best.is_exception,
     n_legs_target: best.n_legs_target, fallback_used: best.fallback_used,
     candidates_count: candidates.length,
   };

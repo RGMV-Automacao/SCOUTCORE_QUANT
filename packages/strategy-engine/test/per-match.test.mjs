@@ -12,7 +12,7 @@ function makeSlot(overrides) {
   return {
     match_id: 'm1', home: 'Flamengo', away: 'Palmeiras', liga: 'brasileirao',
     date: '2026-05-13', market_key: 'test', family: 'gols', scope: 'total',
-    period: 'FT', direction: 'over', line: 2.5, fair_prob: 0.55, fair_odd: 1.82,
+    period: 'FT', direction: 'over', line: 2.5, fair_prob: 0.70, fair_odd: 1.43,
     confidence: 0.78, certified: true, market_odd: 2.10, edge_pct: 5.4,
     engine_source: 'curinga', ...overrides,
   };
@@ -67,7 +67,22 @@ describe('per_match runner — Duplas', () => {
     for (const pick of result.picks) {
       assert.ok(pick.combo_odd >= 2.0, `combo_odd ${pick.combo_odd} < 2.0`);
       assert.ok(pick.combo_odd <= 4.0, `combo_odd ${pick.combo_odd} > 4.0`);
+      assert.ok(pick.combo_ev >= 0, `combo_ev ${pick.combo_ev} < 0`);
     }
+  });
+
+  it('duplas: rejects stale positive edge when recalculated combo EV is negative', async () => {
+    const staleSlots = [
+      makeSlot({ match_id: 'stale', market_key: 'stale_gols', family: 'gols', market_odd: 1.70, fair_prob: 0.45, edge_pct: 12 }),
+      makeSlot({ match_id: 'stale', market_key: 'stale_esc', family: 'escanteios', market_odd: 1.70, fair_prob: 0.45, edge_pct: 12 }),
+      makeSlot({ match_id: 'valid', market_key: 'valid_gols', family: 'gols', market_odd: 1.70, fair_prob: 0.70, edge_pct: 12 }),
+      makeSlot({ match_id: 'valid', market_key: 'valid_esc', family: 'escanteios', market_odd: 1.70, fair_prob: 0.70, edge_pct: 12 }),
+    ];
+
+    const result = await applyStrategy('duplas', staleSlots, { top_n: 10 });
+
+    assert.equal(result.picks.some((pick) => pick.match_id === 'stale'), false);
+    assert.equal(result.picks.some((pick) => pick.match_id === 'valid'), true);
   });
 
   it('duplas: ranked by ev_sum_pct desc', async () => {

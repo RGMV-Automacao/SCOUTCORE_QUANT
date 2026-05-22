@@ -11,7 +11,7 @@ function makeSlot(matchId, overrides) {
   return {
     match_id: matchId, home: 'Team A', away: 'Team B', liga: 'brasileirao',
     date: '2026-05-13', market_key: 'test', family: 'gols', scope: 'total',
-    period: 'FT', direction: 'over', line: 2.5, fair_prob: 0.55, fair_odd: 1.82,
+    period: 'FT', direction: 'over', line: 2.5, fair_prob: 0.82, fair_odd: 1.22,
     confidence: 0.78, certified: true, market_odd: 1.70, edge_pct: 5.0,
     engine_source: 'curinga', ...overrides,
   };
@@ -57,7 +57,10 @@ describe('board_based runner — Yankee', () => {
 
   it('yankee: diversity fail if missing team/HT legs', async () => {
     const noHtSlots = SLOTS.map(s => ({ ...s, period: 'FT', scope: 'total' }));
-    const result = await applyStrategy('yankee', noHtSlots);
+    const result = await applyStrategy('yankee', noHtSlots, {
+      odd_combo_range: [2.30, 3.50],
+      diversity: { max_per_league: 10, min_families: 3, min_team_or_ht: 2, max_same_family_pct: 0.45 },
+    });
     assert.equal(result.board.board_status, 'diversity_fail');
     assert.equal(result.tickets.length, 0);
     assert.ok(result.meta.warnings.some(w => w.includes('team/HT')));
@@ -84,6 +87,130 @@ describe('board_based runner — Yankee', () => {
     assert.equal(result.tickets.length, 10);
     assert.equal(result.board.stats.league_counts['liga-a'], 5);
     assert.equal(result.board.stats.league_counts['liga-b'], 5);
+  });
+
+  it('yankee: excludes specified match ids before selecting the board', async () => {
+    const extraSlots = [];
+    for (let i = 1; i <= 12; i++) {
+      const m = `ex${i}`;
+      extraSlots.push(makeSlot(m, { market_key: 'gols_ft_over_2_5', family: 'gols', market_odd: 1.5, confidence: 0.7 + i / 100 }));
+      extraSlots.push(makeSlot(m, { market_key: 'btts_sim', family: 'btts', market_odd: 1.5, confidence: 0.7 + i / 100 }));
+      extraSlots.push(makeSlot(m, { market_key: 'cart_ht_over_1_5', family: 'cartoes', period: '1T', market_odd: 1.5, confidence: 0.7 + i / 100 }));
+    }
+
+    const result = await applyStrategy('yankee', extraSlots, {
+      n_confrontos: [10],
+      diversity: { max_per_league: 20, min_families: 3, min_team_or_ht: 2, max_same_family_pct: 0.45 },
+      excluded_match_ids: ['ex11', 'ex12'],
+    });
+
+    assert.equal(result.board.board_status, 'ok');
+    assert.equal(result.board.ready_combos.length, 10);
+    assert.equal(result.board.ready_combos.some((combo) => combo.match_id === 'ex11'), false);
+    assert.equal(result.board.ready_combos.some((combo) => combo.match_id === 'ex12'), false);
+    assert.equal(result.tickets.flatMap((ticket) => ticket.match_ids).includes('ex11'), false);
+    assert.equal(result.tickets.flatMap((ticket) => ticket.match_ids).includes('ex12'), false);
+  });
+
+  it('yankee: rejects internally negative combo EV even when rank score is high enough', async () => {
+    const negativeEvSlots = [];
+    for (let i = 1; i <= 10; i++) {
+      const m = `neg${i}`;
+      negativeEvSlots.push(makeSlot(m, { market_key: 'gols_ft_over_2_5', family: 'gols', market_odd: 1.50, fair_prob: 0.45, edge_pct: 8, confidence: 0.95 }));
+      negativeEvSlots.push(makeSlot(m, { market_key: 'esc_ft_over_9_5', family: 'escanteios', market_odd: 1.50, fair_prob: 0.45, edge_pct: 8, confidence: 0.94 }));
+      negativeEvSlots.push(makeSlot(m, { market_key: 'cart_ht_over_1_5', family: 'cartoes', market_odd: 1.50, fair_prob: 0.45, edge_pct: 8, confidence: 0.93, period: '1T' }));
+    }
+
+    const result = await applyStrategy('yankee', negativeEvSlots, {
+      n_confrontos: [10],
+      combo_ev_min: 0,
+      diversity: { max_per_league: 10, min_families: 3, min_team_or_ht: 2, max_same_family_pct: 0.45 },
+    });
+
+    assert.equal(result.board.board_status, 'insufficient');
+    assert.equal(result.board.ready_combos.length, 0);
+    assert.equal(result.tickets.length, 0);
+  });
+
+  it('yankee: applies correlation discount to 2-leg criar aposta combos', async () => {
+    const discountedSlots = [];
+    for (let i = 1; i <= 10; i++) {
+      const m = `disc2-${i}`;
+      discountedSlots.push(makeSlot(m, {
+        market_key: 'gols_ft_over_2_5',
+        family: 'gols',
+        scope: 'total',
+        period: 'FT',
+        direction: 'over',
+        market_odd: 1.60,
+      }));
+      discountedSlots.push(makeSlot(m, {
+        market_key: 'esc_ft_over_9_5',
+        family: 'escanteios',
+        scope: 'total',
+        period: 'FT',
+        direction: 'over',
+        market_odd: 1.60,
+      }));
+    }
+
+    const result = await applyStrategy('yankee', discountedSlots, {
+      n_confrontos: [10],
+      odd_combo_range: [2.20, 3.50],
+      diversity: { max_per_league: 10, min_families: 2, min_team_or_ht: 0, max_same_family_pct: 0.6 },
+    });
+
+    assert.equal(result.board.board_status, 'ok');
+    const combo = result.board.ready_combos[0];
+    assert.ok(combo, 'should select a ready combo');
+    assert.equal(combo.builder_discount, 0.885);
+    assert.equal(combo.correlation_factor, 0.885);
+    assert.equal(combo.combo_odd, 2.266);
+  });
+
+  it('yankee: uses harsher correlation discount when it is below the fixed builder discount', async () => {
+    const discountedSlots = [];
+    for (let i = 1; i <= 10; i++) {
+      const m = `disc3-${i}`;
+      discountedSlots.push(makeSlot(m, {
+        market_key: 'gols_ft_over_2_5',
+        family: 'gols',
+        scope: 'total',
+        period: 'FT',
+        direction: 'over',
+        market_odd: 1.45,
+      }));
+      discountedSlots.push(makeSlot(m, {
+        market_key: 'esc_ft_over_9_5',
+        family: 'escanteios',
+        scope: 'total',
+        period: 'FT',
+        direction: 'over',
+        market_odd: 1.45,
+      }));
+      discountedSlots.push(makeSlot(m, {
+        market_key: 'cart_ft_over_3_5',
+        family: 'cartoes',
+        scope: 'total',
+        period: 'FT',
+        direction: 'over',
+        market_odd: 1.45,
+      }));
+    }
+
+    const result = await applyStrategy('yankee', discountedSlots, {
+      n_confrontos: [10],
+      odd_combo_range: [2.10, 3.50],
+      diversity: { max_per_league: 10, min_families: 3, min_team_or_ht: 0, max_same_family_pct: 0.45 },
+    });
+
+    assert.equal(result.board.board_status, 'ok');
+    const combo = result.board.ready_combos[0];
+    assert.ok(combo, 'should select a ready combo');
+    assert.equal(combo.builder_discount_base, 0.854);
+    assert.equal(combo.correlation_factor, 0.693);
+    assert.equal(combo.builder_discount, 0.693);
+    assert.equal(combo.combo_odd, 2.113);
   });
 
   it('yankee: blocks dominated pair btts_sim + gols_total_over_1.5', async () => {

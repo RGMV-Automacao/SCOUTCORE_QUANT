@@ -1,0 +1,23 @@
+{
+  "source": "motor_run.response_payload",
+  "batch_run_id": "run-2026-05-19-to-2026-05-19-restart-normaliz",
+  "prediction_run_id": null,
+  "match_id": null,
+  "db": "C:\\Users\\Rogerio\\Desktop\\RGMV_PROJETOS\\SCOUTCORE_QUANT\\data\\scout_extraction.db",
+  "responses_count": 1,
+  "slots_count": 487,
+  "ranked_count": 14,
+  "prediction_run_ids": [
+    "run-2026-05-19-to-2026-05-19-restart-normaliz__51wruvqfagv0fz9vzksxri4gk"
+  ],
+  "files": [
+    "request.json",
+    "response.json",
+    "mesa_summary.csv",
+    "mesa_ranked.csv",
+    "mesa_slots.csv",
+    "audit_unified.csv",
+    "raw/*.json"
+  ],
+  "generated_at": "2026-05-19T17:02:10.229Z"
+}

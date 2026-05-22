@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import Database from 'better-sqlite3';
 
-const db = new Database('data/scout.db', { readonly: true });
+const db = new Database(process.env.SCOUT_DB || 'data/scout_extraction.db', { readonly: true });
 const rows = db.prepare(`
   SELECT liga, temporada, COUNT(*) n
   FROM partidas

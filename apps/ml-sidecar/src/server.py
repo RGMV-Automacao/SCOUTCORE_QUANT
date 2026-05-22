@@ -47,7 +47,14 @@ if MODELS_DIR.exists():
             MANIFEST = json.loads(mf.read_text(encoding="utf-8"))
         except Exception:
             MANIFEST = {}
-    for f in sorted(MODELS_DIR.glob("*.joblib")):
+    manifest_models = {
+        m.get("name") for m in MANIFEST.get("models", [])
+        if m.get("name") and not m.get("skipped")
+    }
+    model_files = sorted(MODELS_DIR.glob("*.joblib"))
+    if manifest_models:
+        model_files = [f for f in model_files if f.stem in manifest_models]
+    for f in model_files:
         try:
             blob = joblib.load(f)
             MODELS[f.stem] = blob

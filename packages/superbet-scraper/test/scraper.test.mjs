@@ -6,6 +6,7 @@ import {
   TOURNAMENT_IDS,
   parseRawEntries,
   eventToRawEntries,
+  isCombinableOdd,
 } from '../src/index.mjs';
 
 test('recordToPortugueseRow: over/under produz "Mais de X.X"', () => {
@@ -55,10 +56,18 @@ test('recordToPortugueseRow: Dupla Chance', () => {
   }
 });
 
-test('recordToPortugueseRow: scope=equipe é descartado (tabela odds não modela)', () => {
+test('recordToPortugueseRow: scope=equipe_home preserva mercado por equipe', () => {
   const row = recordToPortugueseRow({
     heading: 'Total de Gols da Equipe', outcome: 'mais', line: 1.5, line_str: '1.5',
     family: 'gols', scope: 'equipe_home', period: 'FT',
+  });
+  assert.deepEqual(row, { mercado: 'Total de Gols da Equipe', selecao: 'Mais de 1.5', linha: '1.5' });
+});
+
+test('recordToPortugueseRow: scope=equipe sem lado continua descartado', () => {
+  const row = recordToPortugueseRow({
+    heading: 'Total de Gols da Equipe', outcome: 'mais', line: 1.5, line_str: '1.5',
+    family: 'gols', scope: 'equipe', period: 'FT',
   });
   assert.equal(row, null);
 });
@@ -98,11 +107,40 @@ test('parseRawEntries + recordToPortugueseRow: pipeline integrado', () => {
   assert.ok(over, 'expected Mais de 2.5');
 });
 
+test('parseRawEntries reconhece labels da tela Superbet que estavam divergentes', () => {
+  const rawEntries = [
+    { heading: 'Resultado Final (1X2)', lineText: null, outcome: 'Flamengo', odd: 2.1, teamTab: null, sectionName: 'RF' },
+    { heading: '1º Tempo - Finalizações 1X2', lineText: null, outcome: 'Palmeiras', odd: 2.4, teamTab: null, sectionName: 'Shots HT 1X2' },
+    { heading: 'Total de Defesas do Goleiro', lineText: '4.5', outcome: 'Mais', odd: 1.9, teamTab: null, sectionName: 'Defesas' },
+    { heading: 'Total de Defesas do Goleiro da Equipe', lineText: '2.5', outcome: 'Menos', odd: 1.7, teamTab: 'Palmeiras', sectionName: 'Defesas Equipe' },
+    { heading: '1º Tempo - Total de Defesas do Goleiro da Equipe', lineText: '1.5', outcome: 'Mais', odd: 2.05, teamTab: 'Flamengo', sectionName: 'Defesas HT Equipe' },
+    { heading: 'Total de Desarmes', lineText: '30.5', outcome: 'Mais', odd: 1.88, teamTab: null, sectionName: 'Desarmes' },
+    { heading: 'Total de Desarmes da Equipe', lineText: '15.5', outcome: 'Menos', odd: 1.82, teamTab: 'Palmeiras', sectionName: 'Desarmes Equipe' },
+    { heading: '2º Tempo - Total de Gols', lineText: '1.5', outcome: 'Mais', odd: 2.2, teamTab: null, sectionName: 'Gols 2T' },
+  ];
+
+  const { records, skipped } = parseRawEntries(rawEntries, {
+    homeTeam: 'Flamengo', awayTeam: 'Palmeiras', matchId: 0, runId: 'labels',
+  });
+
+  assert.equal(skipped.length, 0, `skipped: ${JSON.stringify(skipped)}`);
+  assert.deepEqual(records.map((r) => [r.heading, r.family, r.scope, r.period, r.outcome]), [
+    ['Resultado Final (1X2)', 'resultado', 'total', 'FT', '1'],
+    ['1º Tempo - Finalizações 1X2', 'chutes', 'total', '1T', '2'],
+    ['Total de Defesas do Goleiro', 'defesas', 'total', 'FT', 'mais'],
+    ['Total de Defesas do Goleiro da Equipe', 'defesas', 'equipe_away', 'FT', 'menos'],
+    ['1º Tempo - Total de Defesas do Goleiro da Equipe', 'defesas', 'equipe_home', '1T', 'mais'],
+    ['Total de Desarmes', 'desarmes', 'total', 'FT', 'mais'],
+    ['Total de Desarmes da Equipe', 'desarmes', 'equipe_away', 'FT', 'menos'],
+    ['2º Tempo - Total de Gols', 'gols', 'total', '2T', 'mais'],
+  ]);
+});
+
 test('eventToRawEntries: payload mínimo da API → rawEntries', () => {
   const payload = {
     matchName: 'Flamengo · Palmeiras',
     odds: [
-      { marketName: 'Total de Gols', name: 'Mais de 2.5', price: 1.85, status: 'active' },
+      { uuid: 'odd-gols-1', marketName: 'Total de Gols', name: 'Mais de 2.5', price: 1.85, status: 'active' },
       { marketName: 'Resultado Final', name: '1', price: 2.10, status: 'active' },
       { marketName: 'Ambas as Equipes Marcam', name: 'Sim', price: 1.70, status: 'active' },
     ],
@@ -113,4 +151,65 @@ test('eventToRawEntries: payload mínimo da API → rawEntries', () => {
   assert.equal(entries[0].outcome, 'mais');
   assert.equal(entries[0].lineText, '2.5');
   assert.equal(entries[0].odd, 1.85);
+  assert.equal(entries[0].oddUuid, 'odd-gols-1');
+});
+
+test('parseRawEntries preserva odd_uuid vindo do payload da API', () => {
+  const rawEntries = [
+    {
+      heading: 'Total de Escanteios da Equipe',
+      lineText: '2.5',
+      outcome: 'Mais',
+      odd: 1.72,
+      oddUuid: 'odd-corners-away',
+      teamTab: 'Roma',
+      sectionName: 'Roma - Total de Escanteios',
+    },
+  ];
+
+  const { records, skipped } = parseRawEntries(rawEntries, {
+    homeTeam: 'Hellas Verona', awayTeam: 'Roma', matchId: 0, runId: 'uuid',
+  });
+
+  assert.equal(skipped.length, 0, `skipped: ${JSON.stringify(skipped)}`);
+  assert.equal(records[0].odd_uuid, 'odd-corners-away');
+});
+
+test('eventToRawEntries reconhece mercados ímpar/par da API', () => {
+  const payload = {
+    matchName: 'Arsenal · Burnley',
+    odds: [
+      { marketName: 'Total de Gols Ímpar/Par', name: 'Ímpar', price: 1.87, status: 'active' },
+      { marketName: 'Ímpar/Par - Escanteios', name: 'Par', price: 1.85, status: 'active' },
+      { marketName: '1º Tempo - Escanteios Ímpar/Par', name: 'Ímpar', price: 1.85, status: 'active' },
+    ],
+  };
+
+  const entries = eventToRawEntries(payload, { homeTeam: 'Arsenal', awayTeam: 'Burnley' });
+  const { records, skipped } = parseRawEntries(entries, {
+    homeTeam: 'Arsenal', awayTeam: 'Burnley', matchId: 0, runId: 'oddeven',
+  });
+
+  assert.equal(skipped.length, 0, `skipped: ${JSON.stringify(skipped)}`);
+  assert.deepEqual(records.map((r) => [r.heading, r.family, r.period, r.outcome]), [
+    ['Total de Gols Ímpar/Par', 'gols_oddeven', 'FT', 'impar'],
+    ['Ímpar/Par - Escanteios', 'escanteios_oddeven', 'FT', 'par'],
+    ['1º Tempo - Escanteios Ímpar/Par', 'escanteios_oddeven', '1T', 'impar'],
+  ]);
+});
+
+test('eventToRawEntries filtra Combinable quando pedido para mesa Criar Aposta', () => {
+  const payload = {
+    matchName: 'Arsenal · Burnley',
+    odds: [
+      { marketName: 'Total de Gols', name: 'Mais de 2.5', price: 1.85, status: 'active', tags: 'BPWM,pm_boostable_market,v2' },
+      { marketName: 'Total de Escanteios', name: 'Mais de 10.5', price: 1.83, status: 'active', tags: 'Corners (BLENDED),Combinable,BPWM,v2' },
+    ],
+  };
+
+  assert.equal(isCombinableOdd(payload.odds[0]), false);
+  assert.equal(isCombinableOdd(payload.odds[1]), true);
+  const entries = eventToRawEntries(payload, { homeTeam: 'Arsenal', awayTeam: 'Burnley', combinableOnly: true });
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].heading, 'Total de Escanteios');
 });

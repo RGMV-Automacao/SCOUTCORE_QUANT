@@ -1,0 +1,23 @@
+{
+  "source": "motor_run.response_payload",
+  "batch_run_id": "run-2026-05-19-to-2026-05-19-fixmapper-scout",
+  "prediction_run_id": null,
+  "match_id": "51wruvqfagv0fz9vzksxri4gk",
+  "db": "C:\\Users\\Rogerio\\Desktop\\RGMV_PROJETOS\\SCOUTCORE_QUANT\\data\\scout_extraction.db",
+  "responses_count": 1,
+  "slots_count": 487,
+  "ranked_count": 7,
+  "prediction_run_ids": [
+    "run-2026-05-19-to-2026-05-19-fixmapper-scout__51wruvqfagv0fz9vzksxri4gk"
+  ],
+  "files": [
+    "request.json",
+    "response.json",
+    "mesa_summary.csv",
+    "mesa_ranked.csv",
+    "mesa_slots.csv",
+    "audit_unified.csv",
+    "raw/*.json"
+  ],
+  "generated_at": "2026-05-19T23:30:48.242Z"
+}

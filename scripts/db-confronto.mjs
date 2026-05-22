@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-const db = new Database(process.env.SCOUT_DB || 'data/scout.db', { readonly: true });
+const db = new Database(process.env.SCOUT_DB || 'data/scout_extraction.db', { readonly: true });
 console.log('confronto sample:');
 console.log(db.prepare('SELECT id, liga, temporada, confronto, modo, status, gols, escanteios FROM confronto LIMIT 3').all());
 console.log('partidas cols:', db.prepare('PRAGMA table_info(partidas)').all().map(c => c.name));

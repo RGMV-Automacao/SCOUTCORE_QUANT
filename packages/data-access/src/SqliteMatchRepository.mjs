@@ -10,7 +10,7 @@
 // - Liga aliases: brasileirao↔brasileiro, etc. Mapeados aqui para reconciliar
 //   o split casa/fora real do FutMax.
 
-import Database from 'better-sqlite3';
+import Database from './Database.mjs';
 
 const LIGA_ALIASES = {
   brasileirao: ['brasileirao', 'brasileiro'],

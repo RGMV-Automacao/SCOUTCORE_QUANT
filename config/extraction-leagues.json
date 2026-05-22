@@ -1,0 +1,156 @@
+{
+  "version": "2026-05-17",
+  "expected": {
+    "total_leagues": 13,
+    "total_seasons": 41,
+    "seasons_by_league": {
+      "premier-league": 5,
+      "brasileirao": 6,
+      "la-liga": 5,
+      "serie-a": 5,
+      "bundesliga": 5,
+      "brasileirao-b": 2,
+      "superliga-argentina": 2,
+      "liga-mx": 1,
+      "ligue-1": 5,
+      "primeira-liga": 2,
+      "championship": 1,
+      "la-liga-2": 1,
+      "serie-b-italia": 1
+    }
+  },
+  "leagues": [
+    {
+      "id": "premier-league",
+      "name": "Premier League",
+      "country": "Inglaterra",
+      "seasons": [
+        { "label": "2025/2026", "env_key": "STATSLINE_URL_PREMIER_LEAGUE", "legacy_env_key": "API_URL_PREMIER_LEAGUE" },
+        { "label": "2024/2025", "env_key": "STATSLINE_URL_PREMIER_LEAGUE_2024_2025", "legacy_env_key": "API_URL_PREMIER_LEAGUE_2024_2025" },
+        { "label": "2023/2024", "env_key": "STATSLINE_URL_PREMIER_LEAGUE_2023_2024", "legacy_env_key": "API_URL_PREMIER_LEAGUE_2023_2024" },
+        { "label": "2022/2023", "env_key": "STATSLINE_URL_PREMIER_LEAGUE_2022_2023", "legacy_env_key": "API_URL_PREMIER_LEAGUE_2022_2023" },
+        { "label": "2021/2022", "env_key": "STATSLINE_URL_PREMIER_LEAGUE_2021_2022", "legacy_env_key": "API_URL_PREMIER_LEAGUE_2021_2022" }
+      ]
+    },
+    {
+      "id": "brasileirao",
+      "name": "Brasileirao Serie A",
+      "country": "Brasil",
+      "seasons": [
+        { "label": "2026", "env_key": "STATSLINE_URL_BRASILEIRAO_2026", "legacy_env_key": "API_URL_BRASILEIRAO_2026" },
+        { "label": "2025", "env_key": "STATSLINE_URL_BRASILEIRAO", "legacy_env_key": "API_URL_BRASILEIRAO" },
+        { "label": "2024", "env_key": "STATSLINE_URL_BRASILEIRAO_2024", "legacy_env_key": "API_URL_BRASILEIRAO_2024" },
+        { "label": "2023", "env_key": "STATSLINE_URL_BRASILEIRAO_2023", "legacy_env_key": "API_URL_BRASILEIRAO_2023" },
+        { "label": "2022", "env_key": "STATSLINE_URL_BRASILEIRAO_2022", "legacy_env_key": "API_URL_BRASILEIRAO_2022" },
+        { "label": "2021", "env_key": "STATSLINE_URL_BRASILEIRAO_2021", "legacy_env_key": "API_URL_BRASILEIRAO_2021" }
+      ]
+    },
+    {
+      "id": "la-liga",
+      "name": "La Liga",
+      "country": "Espanha",
+      "seasons": [
+        { "label": "2025/2026", "env_key": "STATSLINE_URL_LA_LIGA", "legacy_env_key": "API_URL_LA_LIGA" },
+        { "label": "2024/2025", "env_key": "STATSLINE_URL_LA_LIGA_2024_2025", "legacy_env_key": "API_URL_LA_LIGA_2024_2025" },
+        { "label": "2023/2024", "env_key": "STATSLINE_URL_LA_LIGA_2023_2024", "legacy_env_key": "API_URL_LA_LIGA_2023_2024" },
+        { "label": "2022/2023", "env_key": "STATSLINE_URL_LA_LIGA_2022_2023", "legacy_env_key": "API_URL_LA_LIGA_2022_2023" },
+        { "label": "2021/2022", "env_key": "STATSLINE_URL_LA_LIGA_2021_2022", "legacy_env_key": "API_URL_LA_LIGA_2021_2022" }
+      ]
+    },
+    {
+      "id": "serie-a",
+      "name": "Serie A",
+      "country": "Italia",
+      "seasons": [
+        { "label": "2025/2026", "env_key": "STATSLINE_URL_SERIE_A", "legacy_env_key": "API_URL_SERIE_A" },
+        { "label": "2024/2025", "env_key": "STATSLINE_URL_SERIE_A_2024_2025", "legacy_env_key": "API_URL_SERIE_A_2024_2025" },
+        { "label": "2023/2024", "env_key": "STATSLINE_URL_SERIE_A_2023_2024", "legacy_env_key": "API_URL_SERIE_A_2023_2024" },
+        { "label": "2022/2023", "env_key": "STATSLINE_URL_SERIE_A_2022_2023", "legacy_env_key": "API_URL_SERIE_A_2022_2023" },
+        { "label": "2021/2022", "env_key": "STATSLINE_URL_SERIE_A_2021_2022", "legacy_env_key": "API_URL_SERIE_A_2021_2022" }
+      ]
+    },
+    {
+      "id": "bundesliga",
+      "name": "Bundesliga",
+      "country": "Alemanha",
+      "seasons": [
+        { "label": "2025/2026", "env_key": "STATSLINE_URL_BUNDESLIGA", "legacy_env_key": "API_URL_BUNDESLIGA" },
+        { "label": "2024/2025", "env_key": "STATSLINE_URL_BUNDESLIGA_2024_2025", "legacy_env_key": "API_URL_BUNDESLIGA_2024_2025" },
+        { "label": "2023/2024", "env_key": "STATSLINE_URL_BUNDESLIGA_2023_2024", "legacy_env_key": "API_URL_BUNDESLIGA_2023_2024" },
+        { "label": "2022/2023", "env_key": "STATSLINE_URL_BUNDESLIGA_2022_2023", "legacy_env_key": "API_URL_BUNDESLIGA_2022_2023" },
+        { "label": "2021/2022", "env_key": "STATSLINE_URL_BUNDESLIGA_2021_2022", "legacy_env_key": "API_URL_BUNDESLIGA_2021_2022" }
+      ]
+    },
+    {
+      "id": "brasileirao-b",
+      "name": "Brasileirao Serie B",
+      "country": "Brasil",
+      "seasons": [
+        { "label": "2026", "env_key": "STATSLINE_URL_BRASILEIRAO_B_2026", "legacy_env_key": "API_URL_BRASILEIRAO_B_2026" },
+        { "label": "2025", "env_key": "STATSLINE_URL_BRASILEIRAO_B", "legacy_env_key": "API_URL_BRASILEIRAO_B" }
+      ]
+    },
+    {
+      "id": "superliga-argentina",
+      "name": "Superliga Argentina",
+      "country": "Argentina",
+      "seasons": [
+        { "label": "2026", "env_key": "STATSLINE_URL_SUPERLIGA_ARGENTINA_2026", "legacy_env_key": "API_URL_SUPERLIGA_ARGENTINA_2026" },
+        { "label": "2025", "env_key": "STATSLINE_URL_SUPERLIGA_ARGENTINA", "legacy_env_key": "API_URL_SUPERLIGA_ARGENTINA" }
+      ]
+    },
+    {
+      "id": "liga-mx",
+      "name": "Liga MX",
+      "country": "Mexico",
+      "seasons": [
+        { "label": "2025/2026", "env_key": "STATSLINE_URL_LIGA_MX", "legacy_env_key": "API_URL_LIGA_MX" }
+      ]
+    },
+    {
+      "id": "ligue-1",
+      "name": "Ligue 1",
+      "country": "Franca",
+      "seasons": [
+        { "label": "2025/2026", "env_key": "STATSLINE_URL_LIGUE_1", "legacy_env_key": "API_URL_LIGUE_1" },
+        { "label": "2024/2025", "env_key": "STATSLINE_URL_LIGUE_1_2024_2025", "legacy_env_key": "API_URL_LIGUE_1_2024_2025" },
+        { "label": "2023/2024", "env_key": "STATSLINE_URL_LIGUE_1_2023_2024", "legacy_env_key": "API_URL_LIGUE_1_2023_2024" },
+        { "label": "2022/2023", "env_key": "STATSLINE_URL_LIGUE_1_2022_2023", "legacy_env_key": "API_URL_LIGUE_1_2022_2023" },
+        { "label": "2021/2022", "env_key": "STATSLINE_URL_LIGUE_1_2021_2022", "legacy_env_key": "API_URL_LIGUE_1_2021_2022" }
+      ]
+    },
+    {
+      "id": "primeira-liga",
+      "name": "Primeira Liga",
+      "country": "Portugal",
+      "seasons": [
+        { "label": "2025/2026", "env_key": "STATSLINE_URL_PRIMEIRA_LIGA", "legacy_env_key": "API_URL_PRIMEIRA_LIGA" },
+        { "label": "2024/2025", "env_key": "STATSLINE_URL_PRIMEIRA_LIGA_2024_2025", "legacy_env_key": "API_URL_PRIMEIRA_LIGA_2024_2025", "enabled": false, "ignore_reason": "legacy_url_absent" }
+      ]
+    },
+    {
+      "id": "championship",
+      "name": "Championship",
+      "country": "Inglaterra",
+      "seasons": [
+        { "label": "2025/2026", "env_key": "STATSLINE_URL_CHAMPIONSHIP", "legacy_env_key": "API_URL_CHAMPIONSHIP" }
+      ]
+    },
+    {
+      "id": "la-liga-2",
+      "name": "La Liga 2",
+      "country": "Espanha",
+      "seasons": [
+        { "label": "2025/2026", "env_key": "STATSLINE_URL_LA_LIGA_2", "legacy_env_key": "API_URL_LA_LIGA_2" }
+      ]
+    },
+    {
+      "id": "serie-b-italia",
+      "name": "Serie B",
+      "country": "Italia",
+      "seasons": [
+        { "label": "2025/2026", "env_key": "STATSLINE_URL_SERIE_B_ITALIA", "legacy_env_key": "API_URL_SERIE_B_ITALIA" }
+      ]
+    }
+  ]
+}

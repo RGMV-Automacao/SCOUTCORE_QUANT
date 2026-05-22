@@ -16,7 +16,7 @@ function parseArgs(argv) {
 }
 
 function usage() {
-  return `Uso: node scripts/run-audit-csv.mjs --run-id=<batch_run_id> [--match-id=<id_confronto>] [--out=audit/run] [--db=data/scout.db]\n`;
+  return `Uso: node scripts/run-audit-csv.mjs --run-id=<batch_run_id> [--match-id=<id_confronto>] [--out=audit/run] [--db=data/scout_extraction.db]\n`;
 }
 
 function parseJson(text, fallback = null) {
@@ -269,7 +269,7 @@ async function main() {
   const batchRunId = String(args['run-id'] || '');
   const predictionRunId = args['prediction-run-id'] ? String(args['prediction-run-id']) : '';
   const matchId = args['match-id'] ? String(args['match-id']) : '';
-  const dbPath = resolve(String(args.db || process.env.SCOUT_DB || 'data/scout.db'));
+  const dbPath = resolve(String(args.db || process.env.SCOUT_DB || 'data/scout_extraction.db'));
   const outDir = resolve(String(args.out || join('audit', `run-audit-${safeName(batchRunId || predictionRunId)}`)));
   prepareOutDir(outDir);
   const rawDir = join(outDir, 'raw');

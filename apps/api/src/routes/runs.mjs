@@ -208,7 +208,15 @@ function matchFallsInsideLiveKickoffGuard(match, now = new Date()) {
   return minutesToKickoff < KICKOFF_BUFFER_MINUTES;
 }
 
+function isRunnableTeamName(value) {
+  const name = String(value ?? '').trim();
+  if (!name) return false;
+  return !new Set(['?', 'tbd', 'a definir', 'undefined', 'null']).has(name.toLowerCase());
+}
+
 function matchPassesRunFilter(match, body = {}, now = new Date()) {
+  if (!isRunnableTeamName(match?.home_team) || !isRunnableTeamName(match?.away_team)) return false;
+
   const wantedId = body.match_id || body.external_id || body.id_confronto;
   if (wantedId && match.id_confronto !== wantedId) return false;
   if (body.liga && match.liga !== body.liga) return false;
@@ -269,15 +277,17 @@ export function registerRuns(app, { repo }) {
           current_match: { idx: mIdx, home: m.home_team, away: m.away_team, liga: m.liga },
         });
 
+        const matchPayload = {
+          external_id: m.id_confronto,
+          home: m.home_team,
+          away: m.away_team,
+          liga: m.liga,
+          date: m.data_partida,
+        };
+        if (m.hora_partida) matchPayload.hora = m.hora_partida;
+
         const payload = {
-          match: {
-            external_id: m.id_confronto,
-            home: m.home_team,
-            away: m.away_team,
-            liga: m.liga,
-            date: m.data_partida,
-            hora: m.hora_partida,
-          },
+          match: matchPayload,
           options: runOptions,
         };
 

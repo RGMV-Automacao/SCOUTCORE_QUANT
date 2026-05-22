@@ -1,16 +1,18 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, Fragment } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, Fragment } from "react";
 import {
   Play, Settings, TrendingUp, Grid, ShieldAlert, Cpu, CheckCircle,
   Activity, LayoutGrid, Zap, History, Search, Database, Eye,
   ChevronDown, ChevronRight, Download, RefreshCw, Trash2,
   Loader2, AlertTriangle, Clock, CheckCircle2, Radio,
   Wallet, Ticket, Brain, Layers3, Swords, ArrowUpRight, Target, Sparkles,
+  Plus,
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:4040";
 const YANKEE_OVERRIDES = {};
+const SIMULATION_MODE_STORAGE_KEY = "scoutcore:web:simulation-mode";
 
 // ── Visual tokens (apollo-turbo) ──────────────────────────────────────────────
 const PANEL =
@@ -80,6 +82,266 @@ const fmtPct = (v: number | null | undefined) =>
 const fmtEdge = (v: number | null | undefined) =>
   v == null ? "—" : `${v.toFixed(1)}%`;
 
+const normalizeDecimalText = (value: string | number | null | undefined) =>
+  String(value ?? "").replace(/(\d+)\.(\d+)/g, "$1,$2");
+
+const fmtPtNumber = (value: number | null | undefined, digits = 2) => {
+  if (value == null || !Number.isFinite(Number(value))) return "";
+  return Number(value).toLocaleString("pt-BR", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+};
+
+const fmtPtOrDash = (value: number | null | undefined, digits = 2) =>
+  fmtPtNumber(value, digits) || "—";
+
+const csvCell = (value: string | number | null | undefined) => {
+  const raw = String(value ?? "");
+  return /[;"\r\n]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
+};
+
+const csvNum = (value: number | null | undefined, digits = 2) => csvCell(fmtPtNumber(value, digits));
+
+const errorMessageOf = (error: unknown, fallback = "erro desconhecido") => {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    return message == null ? fallback : String(message);
+  }
+  return fallback;
+};
+
+type ResolverMetricRow = {
+  fair_odd?: number | string | null;
+  fair_prob?: number | string | null;
+  market_odd?: number | string | null;
+  ev_pct?: number | string | null;
+  edge_pp?: number | string | null;
+  confidence?: number | string | null;
+};
+
+type ResolverPredictionRow = ResolverMetricRow & {
+  match_id?: string | null;
+  market_key?: string | null;
+  home?: string | null;
+  away?: string | null;
+  liga?: string | null;
+  family?: string | null;
+  scope?: string | null;
+  period?: string | null;
+  direction?: string | null;
+  line?: number | string | null;
+  sb_market?: string | null;
+  sb_selection?: string | null;
+  sb_line?: number | string | null;
+  certified?: boolean | null;
+  result?: "green" | "red" | "void" | null;
+  actual_value?: number | string | null;
+  settled_at?: string | null;
+  provenance?: {
+    odd?: {
+      mercado?: string | number | null;
+      selecao?: string | number | null;
+      linha?: string | number | null;
+    } | null;
+  } | null;
+};
+
+type ValidationGap = {
+  match_id?: string | number | null;
+  match?: string | null;
+  reason?: string | null;
+  market_key?: string | null;
+};
+
+type ExternalValidationSummary = {
+  tickets_ok?: number;
+  tickets_total?: number;
+  boards_ok?: number;
+  boards_total?: number;
+  boards_failed?: number;
+  gaps_total?: number;
+};
+
+type RepairHistoryMatch = {
+  match_id?: string | number | null;
+  match?: string | null;
+  reasons?: string[] | null;
+};
+
+type RepairHistoryEntry = {
+  pass?: number;
+  excluded_match_ids?: Array<string | number | null>;
+  excluded_matches?: RepairHistoryMatch[] | null;
+  added_match_ids?: Array<string | number | null>;
+  added_matches?: RepairHistoryMatch[] | null;
+  summary_before?: ExternalValidationSummary | null;
+};
+
+type ManualYankeeApiResult = {
+  submission_id?: string;
+  status?: string;
+  can_submit_real?: boolean;
+  tickets_count?: number;
+  stake_total?: number | string;
+  blocking?: string[];
+  external_validation?: {
+    summary?: ExternalValidationSummary | null;
+    sample_gaps?: ValidationGap[] | null;
+  } | null;
+};
+
+type ManualYankeeLeg = ResolverMetricRow & {
+  id: string;
+  match_id: string;
+  market_key: string;
+  home?: string | null;
+  away?: string | null;
+  liga?: string | null;
+  family?: string | null;
+  scope?: string | null;
+  period?: string | null;
+  direction?: string | null;
+  line?: number | string | null;
+  certified?: boolean;
+  result?: "green" | "red" | "void" | null;
+  actual_value?: number | string | null;
+};
+
+type ManualYankeeBoard = {
+  id: string;
+  match_id: string;
+  home?: string | null;
+  away?: string | null;
+  liga?: string | null;
+  legs: ManualYankeeLeg[];
+  combo_odd: number;
+  avg_edge_pp: number | null;
+};
+
+type ManualYankeeTicket = {
+  ticket_idx: number;
+  kind: "double" | "triple" | "fourfold";
+  board_indices: number[];
+  boards: ManualYankeeBoard[];
+  ticket_odd: number;
+  stake_brl: number;
+};
+
+const MANUAL_YANKEE_DESIGN = [
+  [0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3],
+  [0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3],
+  [0, 1, 2, 3],
+] as const;
+
+const manualYankeeLegId = (matchId: string | null | undefined, marketKey: string | null | undefined) =>
+  `${matchId ?? ""}::${marketKey ?? ""}`;
+
+const manualTicketKindOf = (size: number): ManualYankeeTicket["kind"] =>
+  size === 2 ? "double" : size === 3 ? "triple" : "fourfold";
+
+const manualTicketLabel = (kind: ManualYankeeTicket["kind"]) => {
+  if (kind === "double") return "Dupla";
+  if (kind === "triple") return "Tripla";
+  return "Quadra";
+};
+
+const positiveOddOf = (value: string | number | null | undefined): number | null => {
+  const odd = Number(value);
+  return Number.isFinite(odd) && odd > 1 ? odd : null;
+};
+
+const rowToManualYankeeLeg = (row: ResolverPredictionRow): ManualYankeeLeg | null => {
+  const matchId = String(row?.match_id ?? "").trim();
+  const marketKey = String(row?.market_key ?? "").trim();
+  const marketOdd = positiveOddOf(row?.market_odd);
+  if (!matchId || !marketKey || marketOdd == null) return null;
+  return {
+    ...row,
+    id: manualYankeeLegId(matchId, marketKey),
+    match_id: matchId,
+    market_key: marketKey,
+    market_odd: marketOdd,
+    certified: Boolean(row?.certified),
+  };
+};
+
+const buildManualYankeeBoards = (legs: ManualYankeeLeg[]): ManualYankeeBoard[] => {
+  const boards: ManualYankeeBoard[] = [];
+  const byMatch = new Map<string, ManualYankeeBoard>();
+  for (const leg of legs) {
+    let board = byMatch.get(leg.match_id);
+    if (!board) {
+      board = {
+        id: leg.match_id,
+        match_id: leg.match_id,
+        home: leg.home,
+        away: leg.away,
+        liga: leg.liga,
+        legs: [],
+        combo_odd: 1,
+        avg_edge_pp: null,
+      };
+      byMatch.set(leg.match_id, board);
+      boards.push(board);
+    }
+    board.legs.push(leg);
+  }
+  return boards.map((board) => {
+    const edgeValues = board.legs.map((leg) => edgePpOf(leg)).filter((value): value is number => value != null);
+    return {
+      ...board,
+      combo_odd: Number(board.legs.reduce((acc, leg) => acc * Number(leg.market_odd ?? 1), 1).toFixed(4)),
+      avg_edge_pp: edgeValues.length ? edgeValues.reduce((sum, value) => sum + value, 0) / edgeValues.length : null,
+    };
+  });
+};
+
+const buildManualYankeeTickets = (boards: ManualYankeeBoard[], stake: number): ManualYankeeTicket[] => {
+  if (boards.length !== 4) return [];
+  return MANUAL_YANKEE_DESIGN.map((indices, ticketIdx) => {
+    const picked = indices.map((index) => boards[index]);
+    return {
+      ticket_idx: ticketIdx,
+      kind: manualTicketKindOf(indices.length),
+      board_indices: indices.slice(),
+      boards: picked,
+      ticket_odd: Number(picked.reduce((acc, board) => acc * Number(board.combo_odd ?? 1), 1).toFixed(4)),
+      stake_brl: stake,
+    };
+  });
+};
+
+const fairOddOf = (row: ResolverMetricRow | null | undefined): number | null => {
+  if (row?.fair_odd != null && Number.isFinite(Number(row.fair_odd))) return Number(row.fair_odd);
+  const fairProb = Number(row?.fair_prob);
+  return Number.isFinite(fairProb) && fairProb > 0 ? 1 / fairProb : null;
+};
+
+const evPctOf = (row: ResolverMetricRow | null | undefined): number | null => {
+  if (row?.ev_pct != null && Number.isFinite(Number(row.ev_pct))) return Number(row.ev_pct);
+  const fairProb = Number(row?.fair_prob);
+  const marketOdd = Number(row?.market_odd);
+  return Number.isFinite(fairProb) && Number.isFinite(marketOdd) && marketOdd > 0
+    ? (fairProb * marketOdd - 1) * 100
+    : null;
+};
+
+const edgePpOf = (row: ResolverMetricRow | null | undefined): number | null => {
+  if (row?.edge_pp != null && Number.isFinite(Number(row.edge_pp))) return Number(row.edge_pp);
+  const fairProb = Number(row?.fair_prob);
+  const marketOdd = Number(row?.market_odd);
+  return Number.isFinite(fairProb) && Number.isFinite(marketOdd) && marketOdd > 0
+    ? (fairProb - (1 / marketOdd)) * 100
+    : null;
+};
+
+const confidencePctOf = (row: ResolverMetricRow | null | undefined): number | null => {
+  const confidence = Number(row?.confidence);
+  return Number.isFinite(confidence) ? confidence * 100 : null;
+};
+
 const fmtValidationScope = (scope: string | null | undefined) => {
   if (scope === "local_board_plus_superbet_catalog") return "Board local + catálogo/quote público da Superbet";
   if (scope === "local_board_only") return "Somente board local";
@@ -102,7 +364,7 @@ const fmtValidationReason = (reason: string | null | undefined) => {
   return reason;
 };
 
-function uniqueValidationGaps(items: any[] = []) {
+function uniqueValidationGaps<T extends ValidationGap>(items: T[] = []) {
   const seen = new Set<string>();
   return items.filter((item) => {
     const key = `${item?.match_id ?? "-"}|${item?.reason ?? "-"}|${item?.market_key ?? "-"}`;
@@ -110,6 +372,97 @@ function uniqueValidationGaps(items: any[] = []) {
     seen.add(key);
     return true;
   });
+}
+
+function ValidationRepairHistory({
+  title,
+  items,
+  matchLabelById,
+}: {
+  title: string;
+  items: RepairHistoryEntry[];
+  matchLabelById: Map<string, string>;
+}) {
+  if (!items.length) return null;
+  const totalMatches = items.reduce((sum, step) => sum + (step.excluded_matches?.length ?? step.excluded_match_ids?.length ?? 0), 0);
+  return (
+    <div className="rounded-xl border border-cyan-500/30 bg-[linear-gradient(160deg,rgba(4,28,42,0.45)_0%,rgba(6,18,28,0.94)_100%)] divide-y divide-cyan-500/10 shadow-[0_4px_14px_rgba(0,0,0,0.28)]">
+      <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-cyan-200/90">
+        ↺ {title} ({totalMatches})
+      </div>
+      {items.map((step, idx) => {
+        const excludedMatches = step.excluded_matches?.length
+          ? step.excluded_matches.map((item) => ({
+              ...item,
+              match: item.match ?? (item.match_id != null ? matchLabelById.get(String(item.match_id)) ?? null : null),
+            }))
+          : (step.excluded_match_ids ?? []).map((matchId) => ({
+              match_id: matchId,
+              match: matchId != null ? matchLabelById.get(String(matchId)) ?? null : null,
+              reasons: [],
+            }));
+        const addedMatches = step.added_matches?.length
+          ? step.added_matches.map((item) => ({
+              ...item,
+              match: item.match ?? (item.match_id != null ? matchLabelById.get(String(item.match_id)) ?? null : null),
+            }))
+          : (step.added_match_ids ?? []).map((matchId) => ({
+              match_id: matchId,
+              match: matchId != null ? matchLabelById.get(String(matchId)) ?? null : null,
+              reasons: [],
+            }));
+        return (
+          <div key={`${step.pass ?? idx}`} className="px-3 py-2.5 space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="rounded-md border border-cyan-500/35 bg-cyan-500/12 px-1.5 py-0.5 text-[10px] font-semibold font-mono text-cyan-200">
+                  Passada {step.pass ?? idx + 1}
+                </span>
+                <span className="text-[11px] text-white/70">{excludedMatches.length} saíram · {addedMatches.length} entraram</span>
+              </div>
+              {step.summary_before && (
+                <span className="text-[10px] font-mono text-white/35">
+                  antes {step.summary_before.tickets_ok ?? 0}/{step.summary_before.tickets_total ?? 0} tickets · {step.summary_before.gaps_total ?? 0} gaps
+                </span>
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="space-y-1.5">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-rose-200/80">Saíram por auditoria</div>
+              {excludedMatches.map((item, itemIdx) => (
+                <div key={`${item.match_id ?? itemIdx}`} className="flex items-start gap-2 flex-wrap">
+                    <span className="text-white/90 font-semibold shrink-0">{item.match ?? item.match_id ?? "—"}</span>
+                  {(item.reasons ?? []).length > 0 ? (item.reasons ?? []).map((reason, reasonIdx) => (
+                    <span key={`${item.match_id ?? itemIdx}-${reasonIdx}`} className="rounded-md border border-rose-500/35 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-semibold font-mono text-rose-100 shrink-0">
+                      {fmtValidationReason(reason)}
+                    </span>
+                  )) : (
+                    <span className="rounded-md border border-amber-500/25 bg-amber-500/8 px-1.5 py-0.5 text-[10px] font-mono text-amber-200/80 shrink-0">
+                      reexecute o dry-run para detalhar o motivo
+                    </span>
+                  )}
+                </div>
+              ))}
+              </div>
+              {addedMatches.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-200/80">Entraram no board</div>
+                  {addedMatches.map((item, itemIdx) => (
+                    <div key={`${item.match_id ?? itemIdx}`} className="flex items-start gap-2 flex-wrap">
+                      <span className="text-white/90 font-semibold shrink-0">{item.match ?? item.match_id ?? "—"}</span>
+                      <span className="rounded-md border border-emerald-500/35 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold font-mono text-emerald-100 shrink-0">
+                        incluído na remontagem
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 type ThemedSelectOption = {
@@ -228,7 +581,11 @@ function prettyMarket(leg: any, ctx?: { home?: string; away?: string }) {
   // 1) labels diretos vindos do backend
   const mercado = leg?.sb_market ?? leg?.provenance?.odd?.mercado ?? null;
   const selecao = leg?.sb_selection ?? leg?.provenance?.odd?.selecao ?? null;
-  if (mercado && selecao) return `${mercado} · ${selecao}`;
+  const linhaReal = leg?.sb_line ?? leg?.provenance?.odd?.linha ?? null;
+  if (mercado) {
+    const parts = [mercado, selecao ?? linhaReal].filter(Boolean);
+    return normalizeDecimalText(parts.join(" · "));
+  }
 
   // 2) reconstrução a partir do market_key
   const fam = (leg?.family ?? "").toString();
@@ -250,8 +607,8 @@ function prettyMarket(leg: any, ctx?: { home?: string; away?: string }) {
   }
 
   let selecaoStr: string;
-  if (dir === "over" || dir === "mais") selecaoStr = line != null ? `Mais de ${line}` : "Mais";
-  else if (dir === "under" || dir === "menos") selecaoStr = line != null ? `Menos de ${line}` : "Menos";
+  if (dir === "over" || dir === "mais") selecaoStr = line != null ? `Mais de ${normalizeDecimalText(line)}` : "Mais";
+  else if (dir === "under" || dir === "menos") selecaoStr = line != null ? `Menos de ${normalizeDecimalText(line)}` : "Menos";
   else if (dir === "sim") selecaoStr = "Sim";
   else if (dir === "nao" || dir === "não") selecaoStr = "Não";
   else if (dir === "home") selecaoStr = ctx?.home ?? "Mandante";
@@ -259,7 +616,7 @@ function prettyMarket(leg: any, ctx?: { home?: string; away?: string }) {
   else if (dir === "draw" || dir === "empate") selecaoStr = "Empate";
   else selecaoStr = dir || (line != null ? String(line) : "—");
 
-  return `${mercadoStr} · ${selecaoStr}`;
+  return normalizeDecimalText(`${mercadoStr} · ${selecaoStr}`);
 }
 
 const tier = (conf: number | null | undefined): string => {
@@ -297,12 +654,12 @@ function buildDuplas(picks: any[]) {
 
 function avgQualityScore(combos: any[]): string | null {
   if (!combos.length) return null;
-  return (combos.reduce((s, c) => s + (c.quality_score ?? 0), 0) / combos.length).toFixed(2);
+  return (combos.reduce((s, c) => s + (c.rank_score ?? c.quality_score ?? 0), 0) / combos.length).toFixed(2);
 }
 
 // ── Settle visual helpers (badge green/red + valor real) ─────────────────────
 // Mostra `predito X · real Y → ✓/✗` em todas as telas onde aparece mercado.
-// Backend popula `result` ('green'|'red'|null) e `actual_value` (number|null)
+// Backend popula `result` ('green'|'red'|'void'|null) e `actual_value` (number|null)
 // em cada leg/pick (via enrichWithSettlement em apps/api/.../strategies.mjs).
 function fmtPredLine(leg: any): string | null {
   const line = leg?.line;
@@ -322,7 +679,7 @@ function ResultBadge({
   size = "sm",
   showActual = true,
 }: {
-  result?: "green" | "red" | null;
+  result?: "green" | "red" | "void" | null;
   actual?: number | null;
   leg?: any;
   size?: "xs" | "sm";
@@ -348,6 +705,17 @@ function ResultBadge({
         <span className="leading-none">{icon}</span>
         <span>{lbl}</span>
         {realTxt && <span className="font-normal opacity-95 ml-0.5">· {realTxt}</span>}
+      </span>
+    );
+  }
+  if (result === "void") {
+    return (
+      <span
+        className={`inline-flex items-center gap-1 rounded-md border bg-slate-500/25 border-slate-300/70 text-slate-100 font-bold font-mono ${px} ${fz}`}
+        title="void (push)"
+      >
+        <span className="leading-none">=</span>
+        <span>VOID</span>
       </span>
     );
   }
@@ -423,6 +791,7 @@ export default function ScoutCorePage() {
 
   // Modo simulação — block real submit (deixar pronto sem apostar)
   const [simulationMode, setSimulationMode] = useState(true);
+  const [simulationModeReady, setSimulationModeReady] = useState(false);
 
   // Pipeline
   const [loading,          setLoading]          = useState(false);
@@ -453,7 +822,7 @@ export default function ScoutCorePage() {
   const [resolverActivity, setResolverActivity] = useState<any>(null);
   const settleTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Yankee submit (Bloco 3.4) — stake + dry-run + double-confirm 15s
+  // Yankee submit (Bloco 3.4) — stake + dry-run opcional + double-confirm 15s
   const [yankeeStake,         setYankeeStake]         = useState(3);
   const [yankeeDryRunResult,  setYankeeDryRunResult]  = useState<any>(null);
   const [yankeeDryRunLoading, setYankeeDryRunLoading] = useState(false);
@@ -461,12 +830,33 @@ export default function ScoutCorePage() {
   const [yankeeSubmitCountdown, setYankeeSubmitCountdown] = useState<number | null>(null);
   const [yankeeSubmitLoading, setYankeeSubmitLoading] = useState(false);
   const [yankeeSubmitResult,  setYankeeSubmitResult]  = useState<any>(null);
+  const [yankeeSubmitNotice, setYankeeSubmitNotice] = useState<string | null>(null);
   const [yankeeHover,         setYankeeHover]         = useState<any>(null);
   const yankeeSubmitTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Yankee manual — seleção operacional a partir do Resolver
+  const [manualYankeeLegs, setManualYankeeLegs] = useState<ManualYankeeLeg[]>([]);
+  const [manualYankeeDryRunResult, setManualYankeeDryRunResult] = useState<ManualYankeeApiResult | null>(null);
+  const [manualYankeeDryRunLoading, setManualYankeeDryRunLoading] = useState(false);
+  const [manualYankeeSubmitResult, setManualYankeeSubmitResult] = useState<ManualYankeeApiResult | null>(null);
+  const [manualYankeeSubmitLoading, setManualYankeeSubmitLoading] = useState(false);
+  const [manualYankeeSubmitConfirm, setManualYankeeSubmitConfirm] = useState(false);
+  const [manualYankeeSubmitCountdown, setManualYankeeSubmitCountdown] = useState<number | null>(null);
+  const manualYankeeSubmitTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Predictions table (Resolver)
   const [predsData,    setPredsData]    = useState<any>(null);
   const [predsLoading, setPredsLoading] = useState(false);
+  const [resolverSearch,       setResolverSearch]       = useState("");
+  const [resolverLiga,         setResolverLiga]         = useState("all");
+  const [resolverTeam,         setResolverTeam]         = useState("all");
+  const [resolverFamily,       setResolverFamily]       = useState("all");
+  const [resolverMarket,       setResolverMarket]       = useState("all");
+  const [resolverResultFilter, setResolverResultFilter] = useState<"all" | "pending" | "green" | "red" | "void">("all");
+  const [resolverOddFilter,    setResolverOddFilter]    = useState<"all" | "with" | "without">("all");
+  const [resolverPeriodFilter, setResolverPeriodFilter] = useState<"all" | "ft" | "ht" | "2t">("all");
+  const [resolverBoardOnly,    setResolverBoardOnly]    = useState(false);
+  const [resolverSort,         setResolverSort]         = useState<"edge_desc" | "edge_asc" | "odd_desc" | "odd_asc" | "confidence_desc" | "match">("edge_desc");
 
   // Agressivas — expandable rows
   const [expandedDuplas, setExpandedDuplas] = useState<Set<number>>(new Set());
@@ -497,12 +887,56 @@ export default function ScoutCorePage() {
   const [clearConfirm,    setClearConfirm]    = useState(false);
 
   // Cleanup timers on unmount
+  const resetResolverFilters = useCallback(() => {
+    setResolverSearch("");
+    setResolverLiga("all");
+    setResolverTeam("all");
+    setResolverFamily("all");
+    setResolverMarket("all");
+    setResolverResultFilter("all");
+    setResolverOddFilter("all");
+    setResolverPeriodFilter("all");
+    setResolverBoardOnly(false);
+    setResolverSort("edge_desc");
+  }, []);
+
+  useEffect(() => {
+    try {
+      const savedMode = window.localStorage.getItem(SIMULATION_MODE_STORAGE_KEY);
+      if (savedMode === "real") setSimulationMode(false);
+      if (savedMode === "simulation") setSimulationMode(true);
+    } catch {
+      // Ignora falhas de storage e mantém o modo seguro por padrão.
+    } finally {
+      setSimulationModeReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!simulationModeReady) return;
+    try {
+      window.localStorage.setItem(
+        SIMULATION_MODE_STORAGE_KEY,
+        simulationMode ? "simulation" : "real",
+      );
+    } catch {
+      // Storage é só conveniência; não deve quebrar a tela.
+    }
+  }, [simulationMode, simulationModeReady]);
+
+  const switchToRealMode = () => {
+    setSimulationMode(false);
+    setError(null);
+    setYankeeSubmitNotice("Modo real habilitado no front. Clique novamente em Submeter Yankee real.");
+  };
+
   useEffect(() => () => {
     if (settleTimer.current) clearInterval(settleTimer.current);
     if (elapsedTimer.current) clearInterval(elapsedTimer.current);
     if (progressTimer.current) clearInterval(progressTimer.current);
     if (pipelineLaunchGraceTimer.current) clearTimeout(pipelineLaunchGraceTimer.current);
     if (yankeeSubmitTimer.current) clearInterval(yankeeSubmitTimer.current);
+    if (manualYankeeSubmitTimer.current) clearInterval(manualYankeeSubmitTimer.current);
   }, []);
 
   // ── Pipeline progress mapping ────────────────────────────────────────────────
@@ -633,8 +1067,11 @@ export default function ScoutCorePage() {
     setSettleConfirm(false); setSettleCountdown(null);
     setResolverActivity(null);
     setPredsData(null); setExpandedDuplas(new Set());
-    setYankeeDryRunResult(null); setYankeeSubmitResult(null);
+    resetResolverFilters();
+    setYankeeDryRunResult(null); setYankeeSubmitResult(null); setYankeeSubmitNotice(null);
     setYankeeSubmitConfirm(false); setYankeeSubmitCountdown(null);
+    setManualYankeeLegs([]); setManualYankeeDryRunResult(null); setManualYankeeSubmitResult(null);
+    setManualYankeeSubmitConfirm(false); setManualYankeeSubmitCountdown(null);
     setProgress(null);
     setLoading(true);
     setPipelinePhase("running");
@@ -772,6 +1209,18 @@ export default function ScoutCorePage() {
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
       setYankeeDryRunResult(data);
+      setYankeeSubmitResult(null);
+      setYankeeSubmitNotice(null);
+      if (data?.board && Array.isArray(data?.tickets)) {
+        setYankeeData((prev: any) => ({
+          ...(prev ?? {}),
+          board: data.board,
+          tickets: data.tickets,
+          submission_id: data.submission_id,
+          repair_history: data.repair_history ?? [],
+          effective_overrides: data.effective_overrides ?? YANKEE_OVERRIDES,
+        }));
+      }
     } catch (e: any) {
       setError(`Yankee dry-run: ${e.message ?? "erro desconhecido"}`);
     } finally {
@@ -780,6 +1229,17 @@ export default function ScoutCorePage() {
   };
 
   const startYankeeSubmitConfirm = () => {
+    if (yankeeSubmitDisabledReason) {
+      setYankeeSubmitNotice(`Bloqueado: ${yankeeSubmitDisabledReason}`);
+      setError(`Yankee submit bloqueado: ${yankeeSubmitDisabledReason}`);
+      return;
+    }
+    if (simulationMode) {
+      setYankeeSubmitNotice("Modo Simulação ativo: use o botão do card ou o toggle do header para abrir a confirmação real.");
+      setError("Modo Simulação ativo — desligue o modo no card de submissão ou no header para enviar tickets reais.");
+      return;
+    }
+    setYankeeSubmitNotice("Confirmação aberta: clique em Confirmar antes do contador zerar.");
     setYankeeSubmitConfirm(true);
     setYankeeSubmitCountdown(15);
     if (yankeeSubmitTimer.current) clearInterval(yankeeSubmitTimer.current);
@@ -804,7 +1264,7 @@ export default function ScoutCorePage() {
   const handleYankeeSubmit = async () => {
     if (!runData?.run_id) return;
     if (simulationMode) {
-      setError("Modo Simulação ativo — submit real bloqueado. Use Dry-run ou desligue o modo no header.");
+      setError("Modo Simulação ativo — submit real bloqueado. Use Dry-run ou desligue o modo no card de submissão ou no header.");
       return;
     }
     if (yankeeSubmitTimer.current) clearInterval(yankeeSubmitTimer.current);
@@ -812,21 +1272,182 @@ export default function ScoutCorePage() {
     setYankeeSubmitCountdown(null);
     setYankeeSubmitLoading(true);
     setYankeeSubmitResult(null);
+    setYankeeSubmitNotice(null);
     setError(null);
     try {
       const r = await fetch(`${API_BASE}/v1/runs/${runData.run_id}/yankee/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stake_per_ticket: yankeeStake, confirm: true, overrides: YANKEE_OVERRIDES }),
+        body: JSON.stringify({
+          stake_per_ticket: yankeeStake,
+          confirm: true,
+          dry_run_submission_id: yankeeDryRunResult?.submission_id,
+          overrides: yankeeDryRunResult?.effective_overrides ?? YANKEE_OVERRIDES,
+        }),
       });
       const data = await r.json();
       if (!r.ok && r.status !== 409) throw new Error(data.error ?? `HTTP ${r.status}`);
       setYankeeSubmitResult(data);
+      setYankeeSubmitNotice(`Retorno Superbet: ${data.status ?? "sem status"}.`);
+      if (data?.board && Array.isArray(data?.tickets)) {
+        setYankeeData((prev: any) => ({
+          ...(prev ?? {}),
+          board: data.board,
+          tickets: data.tickets,
+          submission_id: data.submission_id,
+          repair_history: data.repair_history ?? [],
+          effective_overrides: data.effective_overrides ?? YANKEE_OVERRIDES,
+        }));
+      }
       setPipelineProgress((prev) => Math.max(prev, 10));
     } catch (e: any) {
+      setYankeeSubmitNotice(`Falha no submit: ${e.message ?? "erro desconhecido"}`);
       setError(`Yankee submit: ${e.message ?? "erro desconhecido"}`);
     } finally {
       setYankeeSubmitLoading(false);
+    }
+  };
+
+  const addManualYankeeLeg = (row: ResolverPredictionRow) => {
+    const leg = rowToManualYankeeLeg(row);
+    if (!leg) {
+      setError("Yankee manual: mercado sem match_id, market_key ou odd de mercado válida.");
+      return;
+    }
+    const sameLeg = manualYankeeLegs.some((item) => item.id === leg.id);
+    if (sameLeg) return;
+
+    const sameMatchCount = manualYankeeLegs.filter((item) => item.match_id === leg.match_id).length;
+    if (sameMatchCount >= 4) {
+      setError("Yankee manual: cada confronto aceita no máximo 4 mercados.");
+      return;
+    }
+    const distinctMatches = new Set(manualYankeeLegs.map((item) => item.match_id));
+    if (sameMatchCount === 0 && distinctMatches.size >= 4) {
+      setError("Yankee manual já tem 4 confrontos. Remova um slot antes de adicionar outro.");
+      return;
+    }
+    setError(null);
+    setManualYankeeDryRunResult(null);
+    setManualYankeeSubmitResult(null);
+    setManualYankeeLegs([...manualYankeeLegs, leg]);
+  };
+
+  const removeManualYankeeLeg = (legId: string) => {
+    setManualYankeeLegs((current) => current.filter((leg) => leg.id !== legId));
+    setManualYankeeDryRunResult(null);
+    setManualYankeeSubmitResult(null);
+  };
+
+  const removeManualYankeeMatch = (matchId: string) => {
+    setManualYankeeLegs((current) => current.filter((leg) => leg.match_id !== matchId));
+    setManualYankeeDryRunResult(null);
+    setManualYankeeSubmitResult(null);
+  };
+
+  const clearManualYankee = () => {
+    setManualYankeeLegs([]);
+    setManualYankeeDryRunResult(null);
+    setManualYankeeSubmitResult(null);
+    setManualYankeeSubmitConfirm(false);
+    setManualYankeeSubmitCountdown(null);
+    if (manualYankeeSubmitTimer.current) clearInterval(manualYankeeSubmitTimer.current);
+  };
+
+  const manualYankeePayload = () => ({
+    stake_per_ticket: yankeeStake,
+    legs: manualYankeeLegs.map((leg) => ({
+      match_id: leg.match_id,
+      market_key: leg.market_key,
+    })),
+  });
+
+  const handleManualYankeeDryRun = async () => {
+    if (!runData?.run_id) return;
+    if (!manualYankeeLocalValidation.ready) {
+      setError(`Yankee manual: ajuste a seleção antes do dry-run (${manualYankeeLocalValidation.blocking.join(", ")}).`);
+      return;
+    }
+    setManualYankeeDryRunLoading(true);
+    setManualYankeeDryRunResult(null);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/v1/runs/${runData.run_id}/yankee/manual/dry-run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(manualYankeePayload()),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`);
+      setManualYankeeDryRunResult(data);
+      setPipelineProgress((current) => Math.max(current, 8));
+    } catch (manualError: unknown) {
+      setError(`Yankee manual dry-run: ${errorMessageOf(manualError)}`);
+    } finally {
+      setManualYankeeDryRunLoading(false);
+    }
+  };
+
+  const startManualYankeeSubmitConfirm = () => {
+    if (manualYankeeSubmitDisabledReason) {
+      setError(`Yankee manual submit bloqueado: ${manualYankeeSubmitDisabledReason}`);
+      return;
+    }
+    setManualYankeeSubmitConfirm(true);
+    setManualYankeeSubmitCountdown(15);
+    if (manualYankeeSubmitTimer.current) clearInterval(manualYankeeSubmitTimer.current);
+    manualYankeeSubmitTimer.current = setInterval(() => {
+      setManualYankeeSubmitCountdown((current) => {
+        if (current == null || current <= 1) {
+          clearInterval(manualYankeeSubmitTimer.current!);
+          setManualYankeeSubmitConfirm(false);
+          return null;
+        }
+        return current - 1;
+      });
+    }, 1000);
+  };
+
+  const cancelManualYankeeSubmit = () => {
+    if (manualYankeeSubmitTimer.current) clearInterval(manualYankeeSubmitTimer.current);
+    setManualYankeeSubmitConfirm(false);
+    setManualYankeeSubmitCountdown(null);
+  };
+
+  const handleManualYankeeSubmit = async () => {
+    if (!runData?.run_id) return;
+    if (simulationMode) {
+      setError("Modo Simulação ativo — submit real manual bloqueado.");
+      return;
+    }
+    if (!manualYankeeLocalValidation.ready) {
+      setError(`Yankee manual: ajuste a seleção antes do submit (${manualYankeeLocalValidation.blocking.join(", ")}).`);
+      return;
+    }
+    if (manualYankeeSubmitTimer.current) clearInterval(manualYankeeSubmitTimer.current);
+    setManualYankeeSubmitConfirm(false);
+    setManualYankeeSubmitCountdown(null);
+    setManualYankeeSubmitLoading(true);
+    setManualYankeeSubmitResult(null);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/v1/runs/${runData.run_id}/yankee/manual/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...manualYankeePayload(),
+          confirm: true,
+          dry_run_submission_id: manualYankeeDryRunResult?.submission_id,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok && response.status !== 409) throw new Error(data.error ?? `HTTP ${response.status}`);
+      setManualYankeeSubmitResult(data);
+      setPipelineProgress((current) => Math.max(current, 10));
+    } catch (manualError: unknown) {
+      setError(`Yankee manual submit: ${errorMessageOf(manualError)}`);
+    } finally {
+      setManualYankeeSubmitLoading(false);
     }
   };
 
@@ -1018,7 +1639,12 @@ export default function ScoutCorePage() {
 
   const deleteRun = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/v1/runs/${id}`, { method: "DELETE" });
+      setError(null);
+      const res = await fetch(`${API_BASE}/v1/runs/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
       setRunsList((p) => p.filter((r) => r.run_id !== id));
       if (runData?.run_id === id) setRunData(null);
     } catch (e: any) { setError(e.message); }
@@ -1027,7 +1653,12 @@ export default function ScoutCorePage() {
 
   const deleteAllRuns = async () => {
     try {
-      await fetch(`${API_BASE}/v1/runs`, { method: "DELETE" });
+      setError(null);
+      const res = await fetch(`${API_BASE}/v1/runs`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
       setRunsList([]);
     } catch (e: any) { setError(e.message); }
     finally { setClearConfirm(false); }
@@ -1040,10 +1671,17 @@ export default function ScoutCorePage() {
     setRunData(r);
     setYankeeData(null); setPicksData(null); setDuplasData(null);
     setSettleResult(null); setDryRunResult(null);
+    setYankeeDryRunResult(null); setYankeeSubmitResult(null); setYankeeSubmitNotice(null);
     setSettleConfirm(false); setSettleCountdown(null);
     setResolverActivity(null);
     setYankeeHover(null);
+    setManualYankeeLegs([]);
+    setManualYankeeDryRunResult(null);
+    setManualYankeeSubmitResult(null);
+    setManualYankeeSubmitConfirm(false);
+    setManualYankeeSubmitCountdown(null);
     setPredsData(null);
+    resetResolverFilters();
     setPipelinePhase("done");
     setPipelineProgress(7);
     loadRunStrategies(r.run_id).catch((e: any) => setError(e.message ?? "Erro ao carregar estratégias do run"));
@@ -1053,9 +1691,46 @@ export default function ScoutCorePage() {
   // ── Derived ───────────────────────────────────────────────────────────────────
   const readyCombos: any[] = yankeeData?.board?.ready_combos ?? [];
   const tickets:     any[] = yankeeData?.tickets ?? [];
+  const yankeeDryRunBlocking: string[] = Array.isArray(yankeeDryRunResult?.blocking) ? yankeeDryRunResult.blocking : [];
+  const yankeeDryRunSummary = yankeeDryRunResult?.external_validation?.summary ?? null;
+  const yankeeDryRunTicketOkCount = Number(yankeeDryRunSummary?.tickets_ok ?? 0);
+  const yankeeDryRunTicketTotal = Number(yankeeDryRunSummary?.tickets_total ?? 0);
+  const yankeeHasPartiallySubmittableTickets = yankeeDryRunTicketOkCount > 0;
+  const yankeeSubmitCandidateCount = yankeeDryRunResult ? yankeeDryRunTicketOkCount : tickets.length;
+  const yankeeSubmitDisabledReason = yankeeSubmitLoading
+      ? "submit em andamento"
+      : tickets.length === 0
+        ? "sem tickets Yankee"
+        : null;
+  const yankeeSubmitDisabled = Boolean(yankeeSubmitDisabledReason);
+  const yankeeSubmitSelectedCount = yankeeSubmitCandidateCount;
+  const yankeeSubmitActionHint = simulationMode
+    ? "modo simulação ativo"
+    : !yankeeDryRunResult
+      ? `dry-run opcional: valida Superbet no envio (${tickets.length} tickets candidatos)`
+      : !yankeeHasPartiallySubmittableTickets
+      ? `dry-run sem tickets OK (${yankeeDryRunResult?.status ?? "sem status"}); o submit revalida antes de enviar`
+      : `envia ${yankeeDryRunTicketOkCount}/${yankeeDryRunTicketTotal} quadras aprovadas`;
+  const yankeeSubmitLabel = yankeeSubmitCandidateCount > 0
+    ? `Submeter ${yankeeSubmitCandidateCount} quadra${yankeeSubmitCandidateCount === 1 ? "" : "s"} real`
+    : "Submeter quadras reais";
   const picks:       any[] = picksData?.picks ?? [];
   const duplas:      any[] = duplasData?.picks ?? buildDuplas(picks);
   const readyComboByMatchId = new Map(readyCombos.map((combo: any) => [combo.match_id, combo]));
+  const knownMatchLabelById = new Map<string, string>();
+  for (const row of predsData?.items ?? []) {
+    const matchId = row?.match_id != null ? String(row.match_id) : "";
+    const home = String(row?.home ?? "").trim();
+    const away = String(row?.away ?? "").trim();
+    if (matchId && home && away && !knownMatchLabelById.has(matchId)) knownMatchLabelById.set(matchId, `${home} x ${away}`);
+  }
+  for (const combo of readyCombos) {
+    const matchId = combo?.match_id != null ? String(combo.match_id) : "";
+    const firstLeg = combo?.legs?.[0] ?? {};
+    const home = String(combo?.home ?? firstLeg?.home ?? "").trim();
+    const away = String(combo?.away ?? firstLeg?.away ?? "").trim();
+    if (matchId && home && away && !knownMatchLabelById.has(matchId)) knownMatchLabelById.set(matchId, `${home} x ${away}`);
+  }
 
   const showYankeeHover = (event: any, combo: any, leg: any) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -1100,13 +1775,12 @@ export default function ScoutCorePage() {
       };
     }).filter(Boolean);
   };
-  const visiblePredRows: any[] = (predsData?.rows ?? []).slice(0, 500);
-  const hiddenPredRows = Math.max(0, (predsData?.rows?.length ?? 0) - visiblePredRows.length);
   const resolverStats = predsData
     ? {
       count: predsData.count ?? 0,
       green: predsData.green ?? 0,
       red: predsData.red ?? 0,
+      void: predsData.void ?? 0,
       pending: predsData.pending ?? 0,
       certified: predsData.certified ?? 0,
     }
@@ -1115,6 +1789,7 @@ export default function ScoutCorePage() {
         count: Number(runData.slots ?? 0),
         green: 0,
         red: 0,
+        void: 0,
         pending: Number(runData.slots ?? 0),
         certified: 0,
       }
@@ -1148,15 +1823,184 @@ export default function ScoutCorePage() {
     .map(({ __dedupe_key, ...p }) => p);
 
   // "no board" check — match is in readyCombos
-  const inBoard = (home: string, away: string) =>
-    readyCombos.some((c) => c.legs?.[0]?.home === home && c.legs?.[0]?.away === away);
+  const boardMatchKeys = useMemo(() => new Set(
+    readyCombos
+      .map((combo: any) => {
+        const head = combo.legs?.[0] ?? {};
+        return head.home && head.away ? `${head.home}|${head.away}` : null;
+      })
+      .filter(Boolean) as string[]
+  ), [readyCombos]);
+  const inBoard = useCallback((home?: string | null, away?: string | null) =>
+    boardMatchKeys.has(`${home}|${away}`), [boardMatchKeys]);
+
+  const resolverAllRows: ResolverPredictionRow[] = useMemo(() => predsData?.rows ?? [], [predsData]);
+  const resolverResultOf = (row: ResolverPredictionRow): "pending" | "green" | "red" | "void" => {
+    if (row?.result === "green" || row?.result === "red" || row?.result === "void") return row.result;
+    return "pending";
+  };
+  const resolverPeriodOf = (row: ResolverPredictionRow): "ft" | "ht" | "2t" => {
+    const period = String(row?.period ?? "").toLowerCase();
+    const key = String(row?.market_key ?? "").toLowerCase();
+    if (period.includes("2") || key.includes("_2t_") || key.includes("second_half")) return "2t";
+    if (period === "ht" || period === "1t" || key.includes("_ht_") || key.includes("_1t_") || key.includes("first_half")) return "ht";
+    return "ft";
+  };
+  const resolverFacets = useMemo(() => {
+    const countBy = new Map<string, number>();
+    const teamBy = new Map<string, number>();
+    const familyBy = new Map<string, number>();
+    const marketBy = new Map<string, { label: string; count: number }>();
+    const bump = (map: Map<string, number>, value: unknown) => {
+      const key = String(value ?? "").trim();
+      if (!key) return;
+      map.set(key, (map.get(key) ?? 0) + 1);
+    };
+    for (const row of resolverAllRows) {
+      bump(countBy, row.liga);
+      bump(teamBy, row.home);
+      bump(teamBy, row.away);
+      bump(familyBy, row.family);
+      const marketKey = String(row.market_key ?? "").trim();
+      if (marketKey) {
+        const current = marketBy.get(marketKey);
+        marketBy.set(marketKey, {
+          label: current?.label ?? prettyMarket(row),
+          count: (current?.count ?? 0) + 1,
+        });
+      }
+    }
+    const optionsFromCounts = (map: Map<string, number>, allLabel: string) => [
+      { value: "all", label: `${allLabel} (${resolverAllRows.length})` },
+      ...[...map.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([value, count]) => ({ value, label: `${value} (${count})` })),
+    ];
+    return {
+      ligas: optionsFromCounts(countBy, "Todas as ligas"),
+      teams: optionsFromCounts(teamBy, "Todos os times"),
+      families: optionsFromCounts(familyBy, "Todas as famílias"),
+      markets: [
+        { value: "all", label: `Todos os mercados (${resolverAllRows.length})` },
+        ...[...marketBy.entries()]
+          .sort((a, b) => b[1].count - a[1].count || a[1].label.localeCompare(b[1].label))
+          .map(([value, item]) => ({ value, label: `${item.label} (${item.count})` })),
+      ],
+    };
+  }, [resolverAllRows]);
+  const resolverActiveFilters =
+    (resolverSearch.trim() ? 1 : 0) +
+    (resolverLiga !== "all" ? 1 : 0) +
+    (resolverTeam !== "all" ? 1 : 0) +
+    (resolverFamily !== "all" ? 1 : 0) +
+    (resolverMarket !== "all" ? 1 : 0) +
+    (resolverResultFilter !== "all" ? 1 : 0) +
+    (resolverOddFilter !== "all" ? 1 : 0) +
+    (resolverPeriodFilter !== "all" ? 1 : 0) +
+    (resolverBoardOnly ? 1 : 0);
+  const resolverFilteredRows = useMemo(() => {
+    const q = resolverSearch.trim().toLowerCase();
+    const rows = resolverAllRows.filter((row) => {
+      if (resolverLiga !== "all" && row.liga !== resolverLiga) return false;
+      if (resolverTeam !== "all" && row.home !== resolverTeam && row.away !== resolverTeam) return false;
+      if (resolverFamily !== "all" && row.family !== resolverFamily) return false;
+      if (resolverMarket !== "all" && row.market_key !== resolverMarket) return false;
+      if (resolverResultFilter !== "all" && resolverResultOf(row) !== resolverResultFilter) return false;
+      if (resolverOddFilter === "with" && row.market_odd == null) return false;
+      if (resolverOddFilter === "without" && row.market_odd != null) return false;
+      if (resolverPeriodFilter !== "all" && resolverPeriodOf(row) !== resolverPeriodFilter) return false;
+      if (resolverBoardOnly && !inBoard(row.home, row.away)) return false;
+      if (!q) return true;
+      const marketLabel = prettyMarket(row, { home: row.home ?? undefined, away: row.away ?? undefined });
+      return [row.home, row.away, row.liga, row.family, row.market_key, marketLabel, row.match_id]
+        .some((value) => String(value ?? "").toLowerCase().includes(q));
+    });
+    return rows.sort((a, b) => {
+      const edgeA = edgePpOf(a) ?? -9999;
+      const edgeB = edgePpOf(b) ?? -9999;
+      const oddA = Number(a.market_odd ?? 0);
+      const oddB = Number(b.market_odd ?? 0);
+      const confA = Number(a.confidence ?? 0);
+      const confB = Number(b.confidence ?? 0);
+      if (resolverSort === "edge_asc") return edgeA - edgeB;
+      if (resolverSort === "odd_desc") return oddB - oddA;
+      if (resolverSort === "odd_asc") return oddA - oddB;
+      if (resolverSort === "confidence_desc") return confB - confA;
+      if (resolverSort === "match") {
+        return `${a.liga ?? ""}|${a.home ?? ""}|${a.away ?? ""}|${a.market_key ?? ""}`
+          .localeCompare(`${b.liga ?? ""}|${b.home ?? ""}|${b.away ?? ""}|${b.market_key ?? ""}`);
+      }
+      return edgeB - edgeA;
+    });
+  }, [resolverAllRows, resolverSearch, resolverLiga, resolverTeam, resolverFamily, resolverMarket, resolverResultFilter, resolverOddFilter, resolverPeriodFilter, resolverBoardOnly, resolverSort, inBoard]);
+  const visiblePredRows: ResolverPredictionRow[] = resolverFilteredRows.slice(0, 500);
+  const hiddenPredRows = Math.max(0, resolverFilteredRows.length - visiblePredRows.length);
+
+  const manualYankeeSelectedIds = useMemo(
+    () => new Set(manualYankeeLegs.map((leg) => leg.id)),
+    [manualYankeeLegs]
+  );
+  const manualYankeeBoards = useMemo(
+    () => buildManualYankeeBoards(manualYankeeLegs),
+    [manualYankeeLegs]
+  );
+  const manualYankeeTickets = useMemo(
+    () => buildManualYankeeTickets(manualYankeeBoards, yankeeStake),
+    [manualYankeeBoards, yankeeStake]
+  );
+  const manualYankeeLocalValidation = useMemo(() => {
+    const blocking: string[] = [];
+    const warnings: string[] = [];
+    if (manualYankeeBoards.length !== 4) blocking.push(`confrontos:${manualYankeeBoards.length}/4`);
+    const oversizedBoards = manualYankeeBoards.filter((board) => board.legs.length > 4);
+    if (oversizedBoards.length > 0) blocking.push(`mercados_por_confronto>4:${oversizedBoards.length}`);
+    const invalidOddCount = manualYankeeLegs.filter((leg) => positiveOddOf(leg.market_odd) == null).length;
+    if (invalidOddCount > 0) blocking.push(`odds_invalidas:${invalidOddCount}`);
+    const uncertifiedCount = manualYankeeLegs.filter((leg) => leg.certified !== true).length;
+    if (uncertifiedCount > 0) warnings.push(`nao_certificadas:${uncertifiedCount}`);
+    const familyCount = manualYankeeLegs.reduce((map, leg) => {
+      const family = String(leg.family ?? "unknown");
+      map.set(family, (map.get(family) ?? 0) + 1);
+      return map;
+    }, new Map<string, number>());
+    for (const [family, count] of familyCount.entries()) {
+      if (count >= 3) warnings.push(`concentracao_familia:${family}:${count}/4`);
+    }
+    return {
+      blocking,
+      warnings,
+      ready: blocking.length === 0,
+      distinctMatches: manualYankeeBoards.length,
+      markets: manualYankeeLegs.length,
+    };
+  }, [manualYankeeBoards, manualYankeeLegs]);
+  const manualYankeeTicketOdds = manualYankeeTickets.map((ticket) => ticket.ticket_odd);
+  const manualYankeeOddMin = manualYankeeTicketOdds.length ? Math.min(...manualYankeeTicketOdds) : null;
+  const manualYankeeOddMax = manualYankeeTicketOdds.length ? Math.max(...manualYankeeTicketOdds) : null;
+  const manualYankeeOddAvg = manualYankeeTicketOdds.length
+    ? manualYankeeTicketOdds.reduce((sum, odd) => sum + odd, 0) / manualYankeeTicketOdds.length
+    : null;
+  const manualYankeeLatestResult = manualYankeeSubmitResult ?? manualYankeeDryRunResult;
+  const manualYankeeValidation = manualYankeeLatestResult?.external_validation ?? null;
+  const manualYankeeSummary = manualYankeeValidation?.summary ?? null;
+  const manualYankeeGaps = uniqueValidationGaps(manualYankeeValidation?.sample_gaps ?? []).slice(0, 5);
+  const manualYankeeSubmitDisabledReason = simulationMode
+    ? "modo simulação ativo"
+    : manualYankeeSubmitLoading
+      ? "submit manual em andamento"
+      : !manualYankeeLocalValidation.ready
+        ? `seleção incompleta (${manualYankeeLocalValidation.blocking.join(", ") || "revisar seleção"})`
+        : null;
+  const manualYankeeSubmitDisabled = Boolean(manualYankeeSubmitDisabledReason);
 
   const yankeeDryValidation = yankeeDryRunResult?.external_validation ?? null;
   const yankeeDrySummary = yankeeDryValidation?.summary ?? null;
   const yankeeDryGaps = uniqueValidationGaps(yankeeDryValidation?.sample_gaps ?? []).slice(0, 5);
+  const yankeeDryRepairHistory = Array.isArray(yankeeDryRunResult?.repair_history) ? yankeeDryRunResult.repair_history as RepairHistoryEntry[] : [];
   const yankeeSubmitValidation = yankeeSubmitResult?.external_validation ?? null;
   const yankeeSubmitSummary = yankeeSubmitValidation?.summary ?? null;
   const yankeeSubmitGaps = uniqueValidationGaps(yankeeSubmitValidation?.sample_gaps ?? []).slice(0, 5);
+  const yankeeSubmitRepairHistory = Array.isArray(yankeeSubmitResult?.repair_history) ? yankeeSubmitResult.repair_history as RepairHistoryEntry[] : [];
 
   // Aprendizado: maiores desvios ordenados por |ewma_hr - 0.5|
   const desvios = [...(calibData?.items ?? [])]
@@ -1171,18 +2015,45 @@ export default function ScoutCorePage() {
 
   // CSV export for predictions
   const exportPredsCsv = () => {
-    if (!predsData?.rows?.length) return;
-    const header = "partida,liga,mercado,familia,odd,edge_pct,confianca,resultado,liquidado_em";
-    const rows = predsData.rows.map((r: any) =>
-      [
-        `"${r.home ?? "?"}×${r.away ?? "?"}"`,
-        r.liga, r.market_key, r.family,
-        r.market_odd ?? "", r.edge_pct != null ? r.edge_pct.toFixed(2) : "",
-        r.confidence != null ? r.confidence.toFixed(3) : "",
-        r.result ?? "pendente", r.settled_at ?? "",
-      ].join(",")
-    );
-    const blob = new Blob([header + "\n" + rows.join("\n")], { type: "text/csv" });
+    if (!resolverFilteredRows.length) return;
+    const header = [
+      "partida", "liga", "time_casa", "time_fora", "mercado_real", "selecao_real", "linha_real",
+      "mercado_label", "market_key", "familia", "prob_modelo_pct", "odd_predita", "odd_superbet",
+      "confianca_pct", "edge_pp", "ev_pct", "resultado", "valor_real", "liquidado_em",
+    ].join(";");
+    const rows = resolverFilteredRows.map((r) => {
+      const oddMeta = r.provenance?.odd ?? {};
+      const mercadoReal = r.sb_market ?? oddMeta.mercado ?? "";
+      const selecaoReal = r.sb_selection ?? oddMeta.selecao ?? "";
+      const linhaReal = r.sb_line ?? oddMeta.linha ?? r.line ?? "";
+      const fairProb = Number(r.fair_prob);
+      const probModeloPct = Number.isFinite(fairProb) ? fairProb * 100 : null;
+      const actualValue = typeof r.actual_value === "number"
+        ? fmtPtNumber(r.actual_value, 2)
+        : normalizeDecimalText(r.actual_value);
+      return [
+        csvCell(`${r.home ?? "?"} x ${r.away ?? "?"}`),
+        csvCell(r.liga),
+        csvCell(r.home),
+        csvCell(r.away),
+        csvCell(normalizeDecimalText(mercadoReal)),
+        csvCell(normalizeDecimalText(selecaoReal)),
+        csvCell(normalizeDecimalText(linhaReal)),
+        csvCell(prettyMarket(r, { home: r.home ?? undefined, away: r.away ?? undefined })),
+        csvCell(r.market_key),
+        csvCell(r.family),
+        csvNum(probModeloPct, 2),
+        csvNum(fairOddOf(r), 2),
+        csvNum(r.market_odd == null ? null : Number(r.market_odd), 2),
+        csvNum(confidencePctOf(r), 1),
+        csvNum(edgePpOf(r), 2),
+        csvNum(evPctOf(r), 2),
+        csvCell(r.result ?? "pendente"),
+        csvCell(actualValue),
+        csvCell(r.settled_at ?? ""),
+      ].join(";");
+    });
+    const blob = new Blob(["\ufeff" + header + "\n" + rows.join("\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `predictions_${runData?.run_id ?? "export"}.csv`;
@@ -1758,7 +2629,7 @@ export default function ScoutCorePage() {
                             )}
                           </td>
                           <td className="py-2 pr-3 text-right font-mono text-white font-semibold">{c.combo_odd?.toFixed(2) ?? "—"}</td>
-                          <td className="py-2 pr-3 text-right font-mono text-yellow-400">{c.quality_score?.toFixed(2) ?? "—"}</td>
+                          <td className="py-2 pr-3 text-right font-mono text-yellow-400">{(c.rank_score ?? c.quality_score)?.toFixed?.(2) ?? "—"}</td>
                           <td className="py-2 pr-3 text-right font-mono text-gray-300">{c.n_legs ?? c.legs?.length ?? "—"}</td>
                           <td className="py-2">
                             <div className="flex flex-wrap gap-1">
@@ -1886,8 +2757,13 @@ export default function ScoutCorePage() {
                     <tbody>
                       {tickets.map((t: any, i: number) => {
                         const legs: any[] = getTicketBoards(t);
-                        const submitted = !!yankeeSubmitResult?.tickets?.some?.((x: any) => x.ticket_idx === (t.ticket_idx ?? i));
-                        const tStatus = submitted ? "SUBMETIDO" : "READY";
+                        const ticketIdx = Number(t.ticket_idx ?? i);
+                        const realSummary = yankeeSubmitResult?.real_submit_summary ?? null;
+                        const selectedTicketIdxs = new Set((realSummary?.selected_ticket_idxs ?? []).map((value: any) => Number(value)));
+                        const selectedForSubmit = selectedTicketIdxs.has(ticketIdx);
+                        const submitted = selectedForSubmit && Number(realSummary?.submitted ?? 0) > 0;
+                        const failedSubmit = selectedForSubmit && Number(realSummary?.failed ?? 0) > 0 && Number(realSummary?.submitted ?? 0) === 0;
+                        const tStatus = submitted ? "SUBMETIDO" : failedSubmit ? "FALHOU" : selectedForSubmit ? "ALVO" : "READY";
                         // Resumo: agrega resultados das legs já enriquecidas pelo backend.
                         // Cada confronto é GREEN se TODAS as suas legs forem green.
                         const perConfronto = legs.map((c) => aggregateLegsResult(c?.legs));
@@ -1946,7 +2822,10 @@ export default function ScoutCorePage() {
                             <td className="py-2 px-3 text-right font-mono text-white">R$ {t.stake_brl?.toFixed(2) ?? "—"}</td>
                             <td className="py-2 px-3 text-center">
                               <span className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-bold font-mono ${
-                                tStatus === "SUBMETIDO" ? "bg-cyan-900/40 border border-cyan-700/40 text-cyan-300" : "bg-emerald-950/25 border border-emerald-500/20 text-emerald-100/65"
+                                tStatus === "SUBMETIDO" ? "bg-cyan-900/40 border border-cyan-700/40 text-cyan-300"
+                                  : tStatus === "FALHOU" ? "bg-rose-900/40 border border-rose-700/40 text-rose-300"
+                                  : tStatus === "ALVO" ? "bg-amber-900/35 border border-amber-600/35 text-amber-200"
+                                  : "bg-emerald-950/25 border border-emerald-500/20 text-emerald-100/65"
                               }`}>{tStatus}</span>
                             </td>
                             <td className="py-2 px-3 text-center font-mono text-[11px] {resumoColor}"><span className={resumoColor}>{resumoTxt}</span></td>
@@ -1967,7 +2846,7 @@ export default function ScoutCorePage() {
                     <div className="mt-2 grid grid-cols-3 gap-1 border-t border-emerald-500/15 pt-2">
                       <div><div className="text-white/45">Odd conf.</div><div className="font-mono font-semibold text-emerald-300">{yankeeHover.combo?.combo_odd?.toFixed?.(2) ?? "—"}</div></div>
                       <div><div className="text-white/45">Legs</div><div className="font-mono text-cyan-300">{yankeeHover.combo?.n_legs ?? yankeeHover.combo?.legs?.length ?? "—"}</div></div>
-                      <div><div className="text-white/45">Score</div><div className="font-mono text-yellow-300">{yankeeHover.combo?.quality_score?.toFixed?.(2) ?? "—"}</div></div>
+                      <div><div className="text-white/45">Score</div><div className="font-mono text-yellow-300">{(yankeeHover.combo?.rank_score ?? yankeeHover.combo?.quality_score)?.toFixed?.(2) ?? "—"}</div></div>
                     </div>
                     <div className="mt-2 space-y-1.5 border-t border-emerald-500/15 pt-2">
                       {(yankeeHover.combo?.legs ?? []).map((x: any, k: number) => (
@@ -1991,32 +2870,26 @@ export default function ScoutCorePage() {
                   <span className="text-sm font-bold text-white font-mono">R$ {tickets.reduce((s: number, t: any) => s + (t.stake_brl ?? 0), 0).toFixed(2)}</span>
                 </div>
 
-                {/* BIBD Frequency Card (Bloco 3.3) */}
-                {bibdFreq.size > 0 && (
-                  <div className={`${SOFT_CARD} p-4 space-y-3`}>
-                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Frequência BIBD por Confronto</h3>
-                    <div className="grid grid-cols-5 gap-1.5">
-                      {[...bibdFreq.entries()].sort((a,b) => a[0]-b[0]).map(([ci, count]) => (
-                        <div key={ci} className={`rounded-lg p-2 text-center ${count === 4 ? "bg-green-950/60 border border-green-800/40" : "bg-yellow-950/40 border border-yellow-700/40"}`}>
-                          <div className="text-xs text-gray-500">#{ci+1}</div>
-                          <div className={`text-sm font-bold font-mono ${count === 4 ? "text-green-400" : "text-yellow-400"}`}>{count}×</div>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-xs text-gray-600">BIBD balanceado = cada confronto aparece exatamente 4× nos 10 bilhetes.</p>
-                  </div>
-                )}
-
                 {/* Controles de submissão (Bloco 3.4) ─────────────────────── */}
                 <div className={`${SOFT_CARD} p-4 space-y-3`}>
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Submissão</h3>
-                    <span className="text-xs text-gray-600">Stake total: <span className="text-white font-mono font-semibold">R$ {(tickets.length * yankeeStake).toFixed(2)}</span></span>
+                    <span className="text-xs text-gray-600">Alvo real: <span className="text-white font-mono font-semibold">R$ {(yankeeSubmitSelectedCount * yankeeStake).toFixed(2)}</span></span>
                   </div>
 
                   {simulationMode && (
-                    <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-200">
-                      Simulação ativa: envio real bloqueado. O Dry-run Superbet continua liberado para validar catálogo e quote sem apostar.
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-200">
+                      <span>
+                        Simulação ativa: envio real bloqueado. O Dry-run Superbet continua liberado para validar catálogo e quote sem apostar.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={switchToRealMode}
+                        disabled={!simulationModeReady || yankeeSubmitLoading || yankeeSubmitConfirm}
+                        className="shrink-0 rounded-md border border-rose-500/40 bg-rose-500/12 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-rose-200 transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Habilitar modo real
+                      </button>
                     </div>
                   )}
 
@@ -2035,6 +2908,10 @@ export default function ScoutCorePage() {
                       />
                     </label>
 
+                    <div className="inline-flex rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] font-medium text-emerald-200/80">
+                      Alvo: {yankeeSubmitCandidateCount} quadra{yankeeSubmitCandidateCount === 1 ? "" : "s"} · R$ {(yankeeSubmitSelectedCount * yankeeStake).toFixed(2)}
+                    </div>
+
                     <button
                       type="button"
                       onClick={handleYankeeDryRun}
@@ -2052,17 +2929,18 @@ export default function ScoutCorePage() {
                       <button
                         type="button"
                         onClick={startYankeeSubmitConfirm}
-                        disabled={simulationMode || yankeeSubmitLoading || tickets.length === 0}
+                        disabled={yankeeSubmitDisabled}
+                        title={yankeeSubmitDisabledReason ?? yankeeSubmitActionHint}
                         className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-rose-500/35 bg-[linear-gradient(135deg,rgba(60,15,22,0.65)_0%,rgba(22,10,15,0.90)_100%)] text-rose-300/80 hover:border-rose-500/55 hover:text-rose-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed font-medium"
                       >
-                        {simulationMode ? "Submit real bloqueado" : yankeeSubmitLoading ? "Submetendo…" : "Submeter Yankee real"}
+                        {yankeeSubmitLoading ? "Submetendo…" : yankeeSubmitLabel}
                       </button>
                     ) : (
                       <>
                         <button
                           type="button"
                           onClick={handleYankeeSubmit}
-                          disabled={simulationMode || yankeeSubmitLoading}
+                          disabled={yankeeSubmitDisabled}
                           className="text-xs px-3 py-1.5 rounded bg-red-700 border border-red-500 text-white font-semibold animate-pulse"
                         >
                           Confirmar ({yankeeSubmitCountdown}s)
@@ -2077,6 +2955,15 @@ export default function ScoutCorePage() {
                       </>
                     )}
                   </div>
+
+                  {(yankeeSubmitNotice || simulationMode || !yankeeDryRunResult || yankeeSubmitDisabledReason || yankeeDryRunResult) && !yankeeSubmitConfirm && (
+                    <div className="text-[11px] text-white/45">
+                      Superbet: <span className="font-mono text-white/70">{yankeeSubmitNotice ?? yankeeSubmitActionHint}</span>
+                      {yankeeSubmitDisabledReason && (
+                        <span className="text-white/45"> · indisponível agora: <span className="font-mono text-white/70">{yankeeSubmitDisabledReason}</span></span>
+                      )}
+                    </div>
+                  )}
 
                   {/* Resultado dry-run */}
                   {yankeeDryRunResult && (() => {
@@ -2168,7 +3055,7 @@ export default function ScoutCorePage() {
                                 <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-amber-300/90">
                                   ⚠ Travas detectadas ({yankeeDryGaps.length})
                                 </div>
-                                {yankeeDryGaps.map((gap: any, idx: number) => (
+                                {yankeeDryGaps.map((gap, idx: number) => (
                                   <div key={idx} className="px-3 py-2.5 flex items-start gap-2 flex-wrap">
                                     <span className="text-white/90 font-semibold shrink-0">{gap.match ?? "—"}</span>
                                     <span className="rounded-md border border-amber-500/45 bg-amber-500/18 px-1.5 py-0.5 text-[10px] font-semibold font-mono text-amber-100 shrink-0">
@@ -2183,6 +3070,11 @@ export default function ScoutCorePage() {
                                 ))}
                               </div>
                             )}
+                            <ValidationRepairHistory
+                              title="Trocas automáticas para auditoria"
+                              items={yankeeDryRepairHistory}
+                              matchLabelById={knownMatchLabelById}
+                            />
                           </div>
                         )}
                         {/* Footer */}
@@ -2194,27 +3086,48 @@ export default function ScoutCorePage() {
                   {/* Resultado submit */}
                   {yankeeSubmitResult && (() => {
                     const isOk = yankeeSubmitResult.status === "submitted";
+                    const isPartial = yankeeSubmitResult.status === "partial_submitted";
+                    const isReadyForReal = yankeeSubmitResult.status === "ready_for_real_submit" || yankeeSubmitResult.status === "partial_ready_for_real_submit";
+                    const realSubmitSummary = yankeeSubmitResult.real_submit_summary ?? null;
+                    const selectedSubmitTotal = Number(realSubmitSummary?.selected_total ?? 0);
+                    const selectedStakeTotal = selectedSubmitTotal * Number(yankeeSubmitResult.stake_per_ticket ?? yankeeStake);
                     const outerCls = isOk
                       ? "border-emerald-500/35 bg-[linear-gradient(160deg,rgba(6,46,28,0.72)_0%,rgba(10,20,16,0.97)_100%)]"
-                      : "border-rose-500/35 bg-[linear-gradient(160deg,rgba(46,6,18,0.72)_0%,rgba(22,12,16,0.97)_100%)]";
+                      : isPartial
+                        ? "border-amber-500/35 bg-[linear-gradient(160deg,rgba(46,34,6,0.72)_0%,rgba(22,18,10,0.97)_100%)]"
+                        : isReadyForReal
+                          ? "border-cyan-500/35 bg-[linear-gradient(160deg,rgba(6,34,46,0.72)_0%,rgba(10,18,22,0.97)_100%)]"
+                        : "border-rose-500/35 bg-[linear-gradient(160deg,rgba(46,6,18,0.72)_0%,rgba(22,12,16,0.97)_100%)]";
                     const statusCls = isOk
                       ? "border-emerald-500/40 bg-emerald-500/12 text-emerald-300"
-                      : "border-rose-500/40 bg-rose-500/12 text-rose-200";
+                      : isPartial
+                        ? "border-amber-500/40 bg-amber-500/12 text-amber-200"
+                        : isReadyForReal
+                          ? "border-cyan-500/40 bg-cyan-500/12 text-cyan-200"
+                        : "border-rose-500/40 bg-rose-500/12 text-rose-200";
+                    const statusLabel = isOk ? "✓ SUBMETIDO" : isPartial ? "↺ PARCIAL" : isReadyForReal ? "PRONTO" : "✗ REJEITADO";
                     return (
                       <div className={`text-xs rounded-xl border p-4 space-y-3 shadow-[0_10px_32px_rgba(0,0,0,0.42)] ${outerCls}`}>
                         {/* Status */}
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <div className="flex items-center gap-2">
                             <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${statusCls}`}>
-                              {isOk ? "✓ SUBMETIDO" : "✗ REJEITADO"}
+                              {statusLabel}
                             </span>
                             <span className="font-semibold text-white/85">Yankee Superbet</span>
                           </div>
                           <span className="font-mono text-white/60 text-[11px]">
-                            {yankeeSubmitResult.tickets_count} tickets · <span className="text-white font-semibold">R$ {yankeeSubmitResult.stake_total} total</span>
+                            {selectedSubmitTotal > 0
+                              ? <>{selectedSubmitTotal} alvo real · <span className="text-white font-semibold">R$ {selectedStakeTotal.toFixed(2)} alvo</span></>
+                              : <>{yankeeSubmitResult.tickets_count} tickets · <span className="text-white font-semibold">R$ {yankeeSubmitResult.stake_total} total</span></>}
                           </span>
                         </div>
                         <div className="text-[11px] text-white/40">Escopo: {fmtValidationScope(yankeeSubmitResult.validation_scope)}</div>
+                        {realSubmitSummary && (
+                          <div className="text-[11px] font-mono text-white/50">
+                            enviados {realSubmitSummary.submitted ?? 0} · falharam {realSubmitSummary.failed ?? 0} · pulados {realSubmitSummary.skipped ?? 0}
+                          </div>
+                        )}
                         {/* Bloqueios */}
                         {(yankeeSubmitResult.blocking?.length ?? 0) > 0 && (
                           <div className="flex flex-wrap gap-1.5">
@@ -2263,7 +3176,7 @@ export default function ScoutCorePage() {
                                 <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-rose-300/90">
                                   ✗ Motivos da rejeição ({yankeeSubmitGaps.length})
                                 </div>
-                                {yankeeSubmitGaps.map((gap: any, idx: number) => (
+                                {yankeeSubmitGaps.map((gap, idx: number) => (
                                   <div key={idx} className="px-3 py-2.5 flex items-start gap-2 flex-wrap">
                                     <span className="text-white/90 font-semibold shrink-0">{gap.match ?? "—"}</span>
                                     <span className="rounded-md border border-rose-500/45 bg-rose-500/18 px-1.5 py-0.5 text-[10px] font-semibold font-mono text-rose-100 shrink-0">
@@ -2278,12 +3191,84 @@ export default function ScoutCorePage() {
                                 ))}
                               </div>
                             )}
+                            <ValidationRepairHistory
+                              title="Trocas automáticas para auditoria"
+                              items={yankeeSubmitRepairHistory}
+                              matchLabelById={knownMatchLabelById}
+                            />
                           </div>
                         )}
                         <div className="text-[10px] font-mono text-white/25">ID: {yankeeSubmitResult.submission_id}</div>
+                        {realSubmitSummary && (
+                          <div className="rounded-xl border border-rose-500/30 bg-[linear-gradient(160deg,rgba(46,6,18,0.45)_0%,rgba(18,8,12,0.90)_100%)] p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-2 flex-wrap text-[11px] font-mono">
+                              <span className="text-rose-200/85 font-semibold uppercase tracking-wider">Diagnóstico do envio real</span>
+                              <span className="text-white/55">
+                                canal <span className="text-white/85">{realSubmitSummary.submit_channel ?? "—"}</span>
+                                {" · "}habilitado <span className="text-white/85">{String(realSubmitSummary.enabled ?? false)}</span>
+                                {" · "}tentado <span className="text-white/85">{realSubmitSummary.attempted ?? 0}</span>
+                                {Number(realSubmitSummary.duplicates_skipped ?? 0) > 0 && (
+                                  <>{" · "}duplicados <span className="text-amber-200">{realSubmitSummary.duplicates_skipped}</span></>
+                                )}
+                              </span>
+                            </div>
+                            {Array.isArray(realSubmitSummary.duplicates) && realSubmitSummary.duplicates.length > 0 && (
+                              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-2 space-y-1">
+                                <div className="text-[10px] font-mono uppercase tracking-wider text-amber-200/85">Quadras já submetidas (re-envio bloqueado)</div>
+                                <ul className="space-y-0.5 text-[11px] font-mono text-amber-100/90">
+                                  {realSubmitSummary.duplicates.map((dup: any, i: number) => (
+                                    <li key={i} className="flex items-center justify-between gap-2 break-all">
+                                      <span>#{String(dup.ticket_idx ?? "?").padStart(2, "0")} → ticket <span className="text-white/90">{dup.external_ticket_id}</span></span>
+                                      <span className="text-white/55">
+                                        odd <span className="text-yellow-300/90">{Number.isFinite(Number(dup.actual_ticket_odd)) ? Number(dup.actual_ticket_odd).toFixed(2) : "—"}</span>
+                                        {" · "}stake <span className="text-white/80">R$ {Number.isFinite(Number(dup.stake_brl)) ? Number(dup.stake_brl).toFixed(2) : "—"}</span>
+                                        {dup.submitted_at && (<>{" · "}<span className="text-white/55">{String(dup.submitted_at).replace("T", " ").slice(0, 16)}</span></>)}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {(realSubmitSummary.errors?.length ?? 0) > 0 ? (
+                              <ul className="space-y-1 text-[11px] font-mono text-rose-100">
+                                {realSubmitSummary.errors.map((item: string, i: number) => (
+                                  <li key={i} className="rounded-md border border-rose-500/40 bg-rose-500/12 px-2 py-1 break-all">{item}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="text-[11px] font-mono text-white/45">
+                                Nenhum motivo retornado pela Superbet. Verifique:
+                                <ul className="list-disc list-inside mt-1 space-y-0.5 text-white/55">
+                                  <li><span className="text-white/80">SCOUTCORE_BOOKLINE_REAL_SUBMIT=true</span> no ambiente do API</li>
+                                  <li>Sessão Playwright/cookie Superbet ativa (sem deslogue)</li>
+                                  <li>Saldo suficiente e mercados ainda <span className="text-white/80">ACTIVE</span></li>
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
+
+                  {bibdFreq.size > 0 && (
+                    <div className={`${SOFT_CARD} p-3 space-y-2`}>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Frequência BIBD</h3>
+                        <p className="text-[10px] text-gray-600">cada confronto aparece exatamente 4× nos bilhetes</p>
+                      </div>
+                      <div className="overflow-x-auto pb-1">
+                        <div className="flex min-w-max gap-1.5">
+                          {[...bibdFreq.entries()].sort((a,b) => a[0]-b[0]).map(([ci, count]) => (
+                            <div key={ci} className={`min-w-13 rounded-lg border px-2 py-1.5 text-center ${count === 4 ? "bg-green-950/40 border-green-800/35" : "bg-yellow-950/30 border-yellow-700/35"}`}>
+                              <div className="text-[10px] text-gray-500">#{ci+1}</div>
+                              <div className={`text-sm font-bold font-mono leading-none ${count === 4 ? "text-green-400" : "text-yellow-300"}`}>{count}×</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -2847,6 +3832,7 @@ export default function ScoutCorePage() {
                       ["Predições", resolverStats.count,     "text-white", null],
                       ["Green",     resolverStats.green,     "text-green-400", resolverGreenPct],
                       ["Red",       resolverStats.red,       "text-red-400", resolverRedPct],
+                      ["Void",      resolverStats.void,      resolverStats.void > 0 ? "text-slate-300" : "text-gray-500", null],
                       ["Pendentes", resolverStats.pending,   resolverStats.pending > 0 ? "text-yellow-400" : "text-gray-500", null],
                       ["Cert.",     resolverStats.certified, "text-cyan-300", null],
                       ["Taxa",      resolverStats.green > 0 || resolverStats.red > 0
@@ -2991,19 +3977,294 @@ export default function ScoutCorePage() {
                   )}
                 </div>
 
+                {/* Yankee manual */}
+                <div className={`${CARD} p-4 space-y-4`}>
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Ticket className="h-4 w-4 text-emerald-300" />
+                      <h3 className="text-xs font-semibold text-white/75 uppercase tracking-wider">Yankee manual</h3>
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold font-mono ${manualYankeeLocalValidation.ready ? "border-emerald-400/45 bg-emerald-500/14 text-emerald-200" : "border-yellow-400/45 bg-yellow-500/12 text-yellow-200"}`}>
+                        {manualYankeeBoards.length}/4
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-white/45">
+                        {manualYankeeTickets.length || 0} tickets · R$ {(manualYankeeTickets.length * yankeeStake).toFixed(2)}
+                      </span>
+                      {manualYankeeLegs.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={clearManualYankee}
+                          className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200 transition-colors hover:bg-rose-500/20"
+                        >
+                          <Trash2 size={11} /> Limpar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 md:grid-cols-4">
+                    {Array.from({ length: 4 }).map((_, slotIndex) => {
+                      const board = manualYankeeBoards[slotIndex];
+                      return (
+                        <div key={slotIndex} className={`min-h-40 rounded-xl border p-3 ${board ? "border-emerald-400/28 bg-emerald-500/8" : "border-emerald-500/14 bg-black/25"}`}>
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-white/45">Slot {slotIndex + 1}</span>
+                            {board ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="rounded border border-emerald-500/20 bg-black/20 px-1.5 py-0.5 text-[10px] font-mono text-emerald-200">{board.legs.length}/4</span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeManualYankeeMatch(board.match_id)}
+                                  className="rounded-md border border-rose-500/25 bg-rose-500/10 p-1 text-rose-200 hover:bg-rose-500/20"
+                                  aria-label={`Remover confronto do slot ${slotIndex + 1}`}
+                                >
+                                  <Trash2 size={11} />
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] font-mono text-white/25">vazio</span>
+                            )}
+                          </div>
+                          {board ? (
+                            <div className="space-y-2">
+                              <div>
+                                <div className="text-[12px] font-semibold leading-snug text-white/90">{board.home ?? "?"} × {board.away ?? "?"}</div>
+                                <div className="text-[10px] text-white/42 truncate">{board.liga ?? "—"}</div>
+                              </div>
+                              <div className="flex items-center justify-between rounded-lg border border-emerald-500/14 bg-black/22 px-2 py-1">
+                                <span className="text-[10px] uppercase tracking-wider text-white/40">Combo</span>
+                                <span className="font-mono text-sm font-bold text-yellow-200">{fmtPtOrDash(board.combo_odd, 2)}</span>
+                              </div>
+                              <div className="max-h-32 space-y-1 overflow-auto pr-1">
+                                {board.legs.map((leg) => (
+                                  <div key={leg.id} className="rounded-lg border border-emerald-500/14 bg-black/20 p-2">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0 flex-1">
+                                        <div className="text-[11px] leading-snug text-white/78">{prettyMarket(leg, { home: leg.home ?? undefined, away: leg.away ?? undefined })}</div>
+                                        <div className="mt-0.5 text-[9px] font-mono text-white/35 break-all">{leg.market_key}</div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeManualYankeeLeg(leg.id)}
+                                        className="shrink-0 rounded border border-rose-500/20 bg-rose-500/8 p-0.5 text-rose-200 hover:bg-rose-500/18"
+                                        aria-label="Remover mercado"
+                                      >
+                                        <Trash2 size={10} />
+                                      </button>
+                                    </div>
+                                    <div className="mt-1 flex items-center justify-between">
+                                      <span className="font-mono text-[11px] font-bold text-yellow-200">{fmtPtOrDash(Number(leg.market_odd), 2)}</span>
+                                      <span className="font-mono text-[10px] text-cyan-300">edge {fmtPtOrDash(edgePpOf(leg), 1)}pp</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex h-20 items-center justify-center rounded-lg border border-dashed border-emerald-500/16 text-[11px] text-white/30">
+                              pendente
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                    {[
+                      ["Confrontos", `${manualYankeeLocalValidation.distinctMatches}/4`, manualYankeeLocalValidation.distinctMatches === 4 ? "text-emerald-300" : "text-yellow-300"],
+                      ["Mercados", `${manualYankeeLocalValidation.markets}/16`, manualYankeeLocalValidation.markets >= 4 ? "text-cyan-300" : "text-yellow-300"],
+                      ["Tickets", manualYankeeTickets.length ? "11" : "—", "text-white"],
+                      ["Odd mín", fmtPtOrDash(manualYankeeOddMin, 2), "text-yellow-200"],
+                      ["Odd média", fmtPtOrDash(manualYankeeOddAvg, 2), "text-cyan-200"],
+                      ["Odd máx", fmtPtOrDash(manualYankeeOddMax, 2), "text-yellow-200"],
+                    ].map(([label, value, color]) => (
+                      <div key={label as string} className="rounded-lg border border-emerald-500/14 bg-black/25 px-3 py-2 text-center">
+                        <div className={`font-mono text-base font-bold ${color as string}`}>{value as string}</div>
+                        <div className="mt-0.5 text-[10px] uppercase tracking-wider text-white/40">{label as string}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {(manualYankeeLocalValidation.blocking.length > 0 || manualYankeeLocalValidation.warnings.length > 0) && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {manualYankeeLocalValidation.blocking.map((item) => (
+                        <span key={item} className="rounded-lg border border-yellow-500/40 bg-yellow-500/14 px-2 py-1 text-[10px] font-semibold font-mono text-yellow-100">{item}</span>
+                      ))}
+                      {manualYankeeLocalValidation.warnings.map((item) => (
+                        <span key={item} className="rounded-lg border border-cyan-500/35 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold font-mono text-cyan-100">{item}</span>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="text-xs text-gray-400 flex items-center gap-2">
+                      Stake/ticket
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        step={0.5}
+                        value={yankeeStake}
+                        onChange={(event) => setYankeeStake(Math.max(1, Math.min(100, Number(event.target.value) || 1)))}
+                        disabled={manualYankeeDryRunLoading || manualYankeeSubmitLoading || manualYankeeSubmitConfirm}
+                        className="w-20 rounded border border-emerald-500/25 bg-black/25 px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-emerald-400 disabled:opacity-50"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleManualYankeeDryRun}
+                      disabled={!manualYankeeLocalValidation.ready || manualYankeeDryRunLoading || manualYankeeSubmitLoading || manualYankeeSubmitConfirm}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/35 bg-emerald-500/12 px-3 py-1.5 text-xs font-medium text-emerald-100 transition-colors hover:bg-emerald-500/22 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      {manualYankeeDryRunLoading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                      {manualYankeeDryRunLoading ? "Validando…" : "Dry-run manual"}
+                    </button>
+                    {!manualYankeeSubmitConfirm ? (
+                      <button
+                        type="button"
+                        onClick={startManualYankeeSubmitConfirm}
+                        disabled={manualYankeeSubmitDisabled}
+                        title={manualYankeeSubmitDisabledReason ?? "Submit manual valida Superbet no envio"}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/35 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-200 transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <ArrowUpRight size={13} /> {simulationMode ? "Submit bloqueado" : "Submeter manual"}
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleManualYankeeSubmit}
+                          disabled={manualYankeeSubmitDisabled}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-500 bg-red-700 px-3 py-1.5 text-xs font-semibold text-white animate-pulse disabled:opacity-45"
+                        >
+                          {manualYankeeSubmitLoading ? <Loader2 size={13} className="animate-spin" /> : <ArrowUpRight size={13} />}
+                          Confirmar ({manualYankeeSubmitCountdown}s)
+                        </button>
+                        <button type="button" onClick={cancelManualYankeeSubmit} className={`rounded-lg px-2.5 py-1.5 text-xs ${SUBTLE_BUTTON}`}>
+                          Cancelar
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {manualYankeeSubmitDisabledReason && !manualYankeeSubmitConfirm && (
+                    <div className="text-[11px] text-white/45">
+                      Manual real bloqueado: <span className="font-mono text-white/70">{manualYankeeSubmitDisabledReason}</span>
+                    </div>
+                  )}
+
+                  {manualYankeeTickets.length > 0 && (
+                    <div className="max-h-44 overflow-auto rounded-xl border border-emerald-500/14 bg-black/22">
+                      <table className="w-full text-[11px]">
+                        <thead className={TABLE_HEAD}>
+                          <tr className={TABLE_HEAD_ROW}>
+                            <th className="py-1.5 px-2 text-left font-medium">#</th>
+                            <th className="py-1.5 pr-2 text-left font-medium">Tipo</th>
+                            <th className="py-1.5 pr-2 text-left font-medium">Confrontos</th>
+                            <th className="py-1.5 pr-2 text-right font-medium">Odd</th>
+                            <th className="py-1.5 pr-2 text-right font-medium">Stake</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {manualYankeeTickets.map((ticket) => (
+                            <tr key={ticket.ticket_idx} className="border-b border-emerald-500/8">
+                              <td className="py-1.5 px-2 font-mono text-white/45">#{String(ticket.ticket_idx + 1).padStart(2, "0")}</td>
+                              <td className="py-1.5 pr-2 text-white/70">{manualTicketLabel(ticket.kind)}</td>
+                              <td className="py-1.5 pr-2 text-white/55">
+                                {ticket.boards.map((board) => `${board.home ?? "?"} x ${board.away ?? "?"}${board.legs.length > 1 ? ` (${board.legs.length})` : ""}`).join(" · ")}
+                              </td>
+                              <td className="py-1.5 pr-2 text-right font-mono font-semibold text-yellow-200">{fmtPtOrDash(ticket.ticket_odd, 2)}</td>
+                              <td className="py-1.5 pr-2 text-right font-mono text-white/75">R$ {ticket.stake_brl.toFixed(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {manualYankeeLatestResult && (() => {
+                    const isSubmitResult = manualYankeeLatestResult === manualYankeeSubmitResult;
+                    const isBlocked = (manualYankeeLatestResult.blocking?.length ?? 0) > 0;
+                    const statusClass = isSubmitResult
+                      ? manualYankeeLatestResult.status === "submitted"
+                        ? "border-emerald-500/40 bg-emerald-500/12 text-emerald-200"
+                        : "border-rose-500/40 bg-rose-500/12 text-rose-200"
+                      : isBlocked
+                        ? "border-amber-500/40 bg-amber-500/12 text-amber-200"
+                        : "border-emerald-500/40 bg-emerald-500/12 text-emerald-200";
+                    return (
+                      <div className="rounded-xl border border-emerald-500/18 bg-black/24 p-3 text-xs space-y-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusClass}`}>
+                            {isSubmitResult ? manualYankeeLatestResult.status : isBlocked ? "trava" : "validado"}
+                          </span>
+                          <span className="font-mono text-white/55">
+                            {manualYankeeLatestResult.tickets_count} tickets · R$ {manualYankeeLatestResult.stake_total} total
+                          </span>
+                        </div>
+                        {(manualYankeeLatestResult.blocking?.length ?? 0) > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {(manualYankeeLatestResult.blocking ?? []).map((item) => (
+                              <span key={item} className="rounded-md border border-amber-500/40 bg-amber-500/14 px-2 py-0.5 text-[10px] font-mono text-amber-100">{item}</span>
+                            ))}
+                          </div>
+                        )}
+                        {manualYankeeSummary && (
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="rounded-lg border border-emerald-500/14 bg-black/25 p-2 text-center">
+                              <div className="font-mono text-base font-bold text-emerald-300">{manualYankeeSummary.tickets_ok}/{manualYankeeSummary.tickets_total}</div>
+                              <div className="text-[10px] uppercase text-white/35">tickets ok</div>
+                            </div>
+                            <div className="rounded-lg border border-emerald-500/14 bg-black/25 p-2 text-center">
+                              <div className="font-mono text-base font-bold text-cyan-300">{manualYankeeSummary.boards_ok}/{manualYankeeSummary.boards_total}</div>
+                              <div className="text-[10px] uppercase text-white/35">boards ok</div>
+                            </div>
+                            <div className="rounded-lg border border-emerald-500/14 bg-black/25 p-2 text-center">
+                              <div className={`font-mono text-base font-bold ${manualYankeeSummary.gaps_total === 0 ? "text-emerald-300" : "text-amber-300"}`}>{manualYankeeSummary.gaps_total}</div>
+                              <div className="text-[10px] uppercase text-white/35">issues</div>
+                            </div>
+                          </div>
+                        )}
+                        {manualYankeeGaps.length > 0 && (
+                          <div className="space-y-1">
+                            {manualYankeeGaps.map((gap, gapIndex: number) => (
+                              <div key={gapIndex} className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                                <span className="text-white/80">{gap.match ?? "—"}</span>
+                                <span className="rounded-md border border-amber-500/35 bg-amber-500/12 px-1.5 py-0.5 font-mono text-amber-100">{fmtValidationReason(gap.reason)}</span>
+                                {gap.market_key && <span className="font-mono text-cyan-200/70">{gap.market_key}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
                 {/* Prediction table (Bloco 5.4) */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Predições do Run</h3>
+                    <div>
+                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Predições do Run</h3>
+                      {predsData?.rows?.length > 0 && (
+                        <div className="mt-0.5 text-[11px] text-white/45">
+                          {resolverFilteredRows.length} de {resolverAllRows.length} mercados
+                          {resolverActiveFilters > 0 && <span className="text-emerald-300"> · {resolverActiveFilters} filtro{resolverActiveFilters > 1 ? "s" : ""}</span>}
+                          {hiddenPredRows > 0 && <span> · mostrando 500</span>}
+                        </div>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       {hiddenPredRows > 0 && (
-                        <span className="text-[11px] text-gray-500">mostrando 500 · CSV completo</span>
+                        <span className="text-[11px] text-gray-500">+{hiddenPredRows} ocultos</span>
                       )}
                       <button onClick={() => loadPredictions(runData.run_id)} disabled={predsLoading}
                         className={`text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 ${SUBTLE_BUTTON}`}>
                         {predsLoading ? "Carregando…" : "Carregar"}
                       </button>
-                      {predsData?.rows?.length > 0 && (
+                      {resolverFilteredRows.length > 0 && (
                         <button onClick={exportPredsCsv}
                           className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg transition-colors ${SUBTLE_BUTTON}`}>
                           <Download size={11} /> CSV
@@ -3017,38 +4278,233 @@ export default function ScoutCorePage() {
                   ) : !predsData.rows?.length ? (
                     <p className="text-xs text-gray-600 text-center py-4">Sem predições para este run. O banco pode estar vazio.</p>
                   ) : (
-                    <div className={`${TABLE_SHELL} max-h-80 overflow-y-auto`}>
-                      <table className="w-full text-xs">
+                    <>
+                    <div className={`${CARD} p-3 space-y-3`}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="relative min-w-64 flex-1">
+                          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40" />
+                          <input
+                            type="text"
+                            value={resolverSearch}
+                            onChange={(e) => setResolverSearch(e.target.value)}
+                            placeholder="Buscar time, liga ou mercado…"
+                            className="w-full rounded-lg border border-emerald-500/20 bg-black/30 py-1.5 pl-7 pr-3 text-xs text-white placeholder:text-white/35 focus:outline-none focus:border-emerald-400"
+                          />
+                        </div>
+                        <ThemedSelect
+                          value={resolverSort}
+                          ariaLabel="Ordenar predições do Resolver"
+                          options={[
+                            { value: "edge_desc", label: "↓ Edge pp" },
+                            { value: "edge_asc", label: "↑ Edge pp" },
+                            { value: "odd_desc", label: "↓ Odd Superbet" },
+                            { value: "odd_asc", label: "↑ Odd Superbet" },
+                            { value: "confidence_desc", label: "↓ Confiança" },
+                            { value: "match", label: "Liga / jogo" },
+                          ]}
+                          onChange={(nextSort) => setResolverSort(nextSort as typeof resolverSort)}
+                          className="w-40"
+                          buttonClassName="py-1.5 text-xs"
+                          listClassName="text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setResolverBoardOnly((current) => !current)}
+                          className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${resolverBoardOnly ? "border-cyan-400/45 bg-cyan-500/18 text-cyan-100" : "border-emerald-500/18 bg-black/25 text-white/60 hover:border-emerald-400/40 hover:bg-emerald-500/10"}`}
+                        >
+                          no board {resolverBoardOnly && "✓"}
+                        </button>
+                        {resolverActiveFilters > 0 && (
+                          <button
+                            type="button"
+                            onClick={resetResolverFilters}
+                            className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-200 transition-colors hover:bg-rose-500/20"
+                          >
+                            Limpar
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                        <ThemedSelect
+                          value={resolverLiga}
+                          ariaLabel="Filtrar por liga"
+                          options={resolverFacets.ligas}
+                          onChange={setResolverLiga}
+                          buttonClassName="py-1.5 text-xs"
+                          listClassName="text-xs"
+                        />
+                        <ThemedSelect
+                          value={resolverTeam}
+                          ariaLabel="Filtrar por time"
+                          options={resolverFacets.teams}
+                          onChange={setResolverTeam}
+                          buttonClassName="py-1.5 text-xs"
+                          listClassName="text-xs"
+                        />
+                        <ThemedSelect
+                          value={resolverFamily}
+                          ariaLabel="Filtrar por família de mercado"
+                          options={resolverFacets.families}
+                          onChange={setResolverFamily}
+                          buttonClassName="py-1.5 text-xs"
+                          listClassName="text-xs"
+                        />
+                        <ThemedSelect
+                          value={resolverMarket}
+                          ariaLabel="Filtrar por mercado"
+                          options={resolverFacets.markets}
+                          onChange={setResolverMarket}
+                          buttonClassName="py-1.5 text-xs"
+                          listClassName="text-xs"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                        {([
+                          ["all", "Todos"],
+                          ["pending", "PEND"],
+                          ["green", "GREEN"],
+                          ["red", "RED"],
+                          ["void", "VOID"],
+                        ] as const).map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setResolverResultFilter(value)}
+                            className={`rounded-md border px-2 py-0.5 font-mono transition-colors ${resolverResultFilter === value ? "border-emerald-400/50 bg-emerald-500/25 text-emerald-100" : "border-emerald-500/18 bg-black/25 text-white/55 hover:border-emerald-400/40 hover:bg-emerald-500/10"}`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                        <span className="mx-1 h-4 w-px bg-emerald-500/18" />
+                        {([
+                          ["all", "Odds todas"],
+                          ["with", "Com odd"],
+                          ["without", "Sem odd"],
+                        ] as const).map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setResolverOddFilter(value)}
+                            className={`rounded-md border px-2 py-0.5 transition-colors ${resolverOddFilter === value ? "border-cyan-400/50 bg-cyan-500/20 text-cyan-100" : "border-emerald-500/18 bg-black/25 text-white/55 hover:border-emerald-400/40 hover:bg-emerald-500/10"}`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                        <span className="mx-1 h-4 w-px bg-emerald-500/18" />
+                        {([
+                          ["all", "Período todos"],
+                          ["ft", "FT"],
+                          ["ht", "HT"],
+                          ["2t", "2T"],
+                        ] as const).map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setResolverPeriodFilter(value)}
+                            className={`rounded-md border px-2 py-0.5 font-mono transition-colors ${resolverPeriodFilter === value ? "border-emerald-400/50 bg-emerald-500/25 text-emerald-100" : "border-emerald-500/18 bg-black/25 text-white/55 hover:border-emerald-400/40 hover:bg-emerald-500/10"}`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {!resolverFilteredRows.length ? (
+                      <p className="text-xs text-gray-600 text-center py-4">Nenhum mercado atende aos filtros atuais.</p>
+                    ) : (
+                    <div className={`${TABLE_SHELL} max-h-80 overflow-auto`}>
+                      <table className="w-full text-xs" style={{ minWidth: 1120 }}>
                         <thead className={`sticky top-0 ${TABLE_HEAD}`}>
                           <tr className={TABLE_HEAD_ROW}>
                             <th className="text-left py-2 pr-3 font-medium">Partida</th>
                             <th className="text-left py-2 pr-3 font-medium">Liga</th>
-                            <th className="text-left py-2 pr-3 font-medium">Mercado</th>
-                            <th className="text-right py-2 pr-3 font-medium">Odd</th>
-                            <th className="text-right py-2 pr-3 font-medium">Edge%</th>
+                            <th className="text-left py-2 pr-3 font-medium">Mercado real</th>
+                            <th className="text-right py-2 pr-3 font-medium">Odd predita</th>
+                            <th className="text-right py-2 pr-3 font-medium">Odd Superbet</th>
+                            <th className="text-right py-2 pr-3 font-medium">Edge pp</th>
+                            <th className="text-right py-2 pr-3 font-medium">EV%</th>
                             <th className="text-right py-2 pr-3 font-medium">Conf</th>
                             <th className="text-right py-2 font-medium">Resultado</th>
+                            <th className="text-right py-2 font-medium">Yankee</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {visiblePredRows.map((r: any, i: number) => (
-                            <tr key={i} className={`border-b border-emerald-500/10 transition-colors ${
-                              r.result === "green" ? "bg-green-950/20" :
-                              r.result === "red"   ? "bg-red-950/20" : "hover:bg-emerald-500/10"}`}>
-                              <td className="py-1.5 pr-3 text-gray-200">{r.home ?? r.match_id?.slice(0,8) ?? "—"} × {r.away ?? "?"}</td>
-                              <td className="py-1.5 pr-3 text-gray-500">{r.liga}</td>
-                              <td className="py-1.5 pr-3 font-mono text-gray-400">{r.market_key}</td>
-                              <td className="py-1.5 pr-3 text-right font-mono text-white">{r.market_odd?.toFixed(2) ?? "—"}</td>
-                              <td className="py-1.5 pr-3 text-right font-mono text-green-400">{fmtEdge(r.edge_pct)}</td>
-                              <td className="py-1.5 pr-3 text-right text-gray-400">{r.confidence?.toFixed(2) ?? "—"}</td>
-                              <td className="py-1.5 text-right">
-                                <ResultBadge result={r.result} actual={r.actual_value} leg={r} size="xs" />
-                              </td>
-                            </tr>
-                          ))}
+                          {visiblePredRows.map((r, i: number) => {
+                            const oddModelo = fairOddOf(r);
+                            const edgePp = edgePpOf(r);
+                            const evPct = evPctOf(r);
+                            const confidencePct = confidencePctOf(r);
+                            const actualForBadge = r.actual_value == null || r.actual_value === ""
+                              ? null
+                              : Number(r.actual_value);
+                            const manualCandidate = rowToManualYankeeLeg(r);
+                            const manualSelected = manualCandidate ? manualYankeeSelectedIds.has(manualCandidate.id) : false;
+                            const sameMatchLegs = manualCandidate
+                              ? manualYankeeLegs.filter((leg) => leg.match_id === manualCandidate.match_id)
+                              : [];
+                            const sameMatchSelected = sameMatchLegs.length > 0;
+                            const sameMatchFull = sameMatchLegs.length >= 4;
+                            const canAddManual = Boolean(manualCandidate) && !manualSelected && (
+                              sameMatchSelected ? !sameMatchFull : manualYankeeBoards.length < 4
+                            );
+                            const manualButtonLabel = sameMatchSelected
+                              ? sameMatchFull ? "4/4" : `+ Mercado ${sameMatchLegs.length}/4`
+                              : "Adicionar";
+                            return (
+                              <tr key={`${r.match_id ?? "match"}-${r.market_key ?? "market"}-${i}`} className={`border-b border-emerald-500/10 transition-colors ${
+                                r.result === "green" ? "bg-green-950/20" :
+                                r.result === "red"   ? "bg-red-950/20" :
+                                r.result === "void"  ? "bg-slate-800/20" : "hover:bg-emerald-500/10"}`}>
+                                <td className="py-1.5 pr-3 text-gray-200">{r.home ?? r.match_id?.slice(0,8) ?? "—"} × {r.away ?? "?"}</td>
+                                <td className="py-1.5 pr-3 text-gray-500">{r.liga}</td>
+                                <td className="py-1.5 pr-3 max-w-[42ch]">
+                                  <div className="text-white/85 leading-snug">{prettyMarket(r, { home: r.home ?? undefined, away: r.away ?? undefined })}</div>
+                                  <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                                    {r.sb_market && <span className="rounded border border-yellow-500/20 bg-yellow-950/15 px-1.5 py-0.5 text-[10px] font-mono text-yellow-100/70">Superbet</span>}
+                                    {r.family && <span className="rounded border border-emerald-500/20 bg-emerald-950/20 px-1.5 py-0.5 text-[10px] font-mono text-emerald-100/65">{r.family}</span>}
+                                    <span className="rounded border border-cyan-500/20 bg-cyan-950/20 px-1.5 py-0.5 text-[10px] font-mono text-cyan-100/60">{resolverPeriodOf(r).toUpperCase()}</span>
+                                    <span className="text-[10px] font-mono text-gray-500 break-all">{r.market_key}</span>
+                                  </div>
+                                </td>
+                                <td className="py-1.5 pr-3 text-right font-mono text-cyan-200">{fmtPtOrDash(oddModelo, 2)}</td>
+                                <td className="py-1.5 pr-3 text-right font-mono text-yellow-200">{fmtPtOrDash(r.market_odd == null ? null : Number(r.market_odd), 2)}</td>
+                                <td className="py-1.5 pr-3 text-right font-mono text-green-300">{fmtPtOrDash(edgePp, 2)}</td>
+                                <td className="py-1.5 pr-3 text-right font-mono text-emerald-300">{fmtPtOrDash(evPct, 2)}</td>
+                                <td className="py-1.5 pr-3 text-right text-gray-400">{confidencePct == null ? "—" : `${fmtPtOrDash(confidencePct, 1)}%`}</td>
+                                <td className="py-1.5 text-right">
+                                  <ResultBadge result={r.result} actual={Number.isFinite(actualForBadge) ? actualForBadge : null} leg={r} size="xs" />
+                                </td>
+                                <td className="py-1.5 text-right">
+                                  {manualSelected ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => removeManualYankeeLeg(manualCandidate!.id)}
+                                      className="inline-flex items-center gap-1 rounded-md border border-rose-500/35 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-200 hover:bg-rose-500/20"
+                                    >
+                                      <Trash2 size={10} /> Remover
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => addManualYankeeLeg(r)}
+                                      disabled={!canAddManual}
+                                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${sameMatchSelected ? "border-yellow-500/40 bg-yellow-500/12 text-yellow-100 hover:bg-yellow-500/20" : "border-emerald-500/35 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20"}`}
+                                      title={sameMatchFull ? "Este confronto já tem 4 mercados" : sameMatchSelected ? "Adicionar outro mercado neste confronto" : "Adicionar confronto ao Yankee manual"}
+                                    >
+                                      <Plus size={10} /> {manualButtonLabel}
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
+                    )}
+                    </>
                   )}
                 </div>
               </>

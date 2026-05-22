@@ -1,11 +1,18 @@
 // apps/jobs/src/settle-results.mjs
 //
 // Settler do Motor 4x4. Resolve `prediction` sem result contra dados reais
-// em `partidas` + `eventos_faixa`, e atualiza `calib_state` via EWMA.
+// em `partidas` + `times` (modo='FT' e 'HT') + `jogadores` (desarmes),
+// e atualiza `calib_state` via EWMA.
 //
-// Adaptado do legacy `settler.js` para o schema do scout.db:
+// Schema:
 //   - partidas: home_goals/away_goals/home_goals_ht/away_goals_ht/id_confronto
-//   - eventos_faixa: (id_confronto, time, faixa) com escanteios/chutes/cartoes/faltas
+//   - times: (id_confronto, time, modo IN ('FT','HT')) com escanteios/chutes/
+//            chutes_no_alvo/faltas/cartoes_*/impedimentos/defesas/gols
+//            (2T derivado como FT − HT)
+//   - jogadores: (id_confronto, time, modo='FT') agregado de desarmes via SUM
+//
+// `eventos_faixa` foi descontinuada como fonte de leitura (Fase 4 do refactor
+// Superbet v2.0.0). Ainda pode existir em DBs legados — não consultamos.
 //
 // match_id namespaced ex: "statsline:df1jmu4xb3o1zeagblve54vmc" → id_confronto = sufixo.
 //
@@ -17,15 +24,12 @@
 //   node apps/jobs/src/settle-results.mjs --dry-run
 
 import 'dotenv/config';
-import Database from 'better-sqlite3';
+import { Database } from '@scoutcore/data-access';
 import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 import {
   loadCalibrationMap, saveCalibrationBatch, updateEwma,
 } from '@scoutcore/calibration';
-
-const HT_BANDS = ['0-10', '11-20', '21-30', '31-45'];
-const TT_BANDS = ['46-55', '56-65', '66-75', '76-90'];
 
 const FAMILY_FIELD = {
   escanteios:   'escanteios',
@@ -35,7 +39,8 @@ const FAMILY_FIELD = {
   chutes_alvo:  'chutes_no_alvo',
   faltas:       'faltas',
   impedimentos: 'impedimentos',
-  defesas:      'defesas',          // vindo de `times`, não de eventos_faixa
+  defesas:      'defesas',
+  desarmes:     'desarmes',         // statsline totalTackle por equipe (FT/HT)
 };
 
 // ── Match identity helpers ───────────────────────────────────────────────────
@@ -72,45 +77,37 @@ function loadMatchStats(db, match_id) {
   `).get(id_confronto);
   if (!partida) return null;
 
-  const events = db.prepare(`
-    SELECT time, faixa, escanteios, chutes, chutes_no_alvo, faltas,
-           cartoes_amarelos, cartoes_vermelhos, gols, impedimentos
-    FROM eventos_faixa
-    WHERE id_confronto = ?
-  `).all(id_confronto);
-
-  const empty = () => ({ escanteios:0, chutes:0, chutes_no_alvo:0, faltas:0,
-                         cartoes_amarelos:0, cartoes_vermelhos:0, gols:0, impedimentos:0,
-                         defesas:0 });
+  const empty = () => ({
+    escanteios: 0, chutes: 0, chutes_no_alvo: 0, faltas: 0,
+    cartoes_amarelos: 0, cartoes_vermelhos: 0, gols: 0,
+    impedimentos: 0, defesas: 0, desarmes: 0,
+  });
   const aggByTimePeriod = new Map();
   for (const team of [partida.home_team, partida.away_team]) {
     aggByTimePeriod.set(team, { FT: empty(), HT: empty(), '2T': empty() });
   }
-  for (const ev of events) {
-    const slot = aggByTimePeriod.get(ev.time);
-    if (!slot) continue; // evento de time não-pareado (defensivo)
-    const isHT = HT_BANDS.includes(ev.faixa);
-    const is2T = TT_BANDS.includes(ev.faixa);
-    for (const [k] of Object.entries(empty())) {
-      slot.FT[k] += ev[k] ?? 0;
-      if (isHT) slot.HT[k] += ev[k] ?? 0;
-      if (is2T) slot['2T'][k] += ev[k] ?? 0;
-    }
-  }
 
-  // Defesas: não vêm em eventos_faixa. Lê de `times` (modo='FT' = total full-match,
-  // modo='HT' = acumulado até o intervalo). 2T derivado por diferença.
-  const tRows = db.prepare(`
-    SELECT time, modo, defesas FROM times WHERE id_confronto = ?
+  // Fonte primária: `times` com modo IN ('FT','HT'). 2T derivado por diferença.
+  const teamRows = db.prepare(`
+    SELECT time, modo, gols, escanteios, chutes, chutes_no_alvo, faltas,
+           cartoes_amarelos, cartoes_vermelhos, impedimentos, defesas, desarmes
+      FROM times
+     WHERE id_confronto = ?
+       AND modo IN ('FT','HT')
   `).all(id_confronto);
-  for (const r of tRows) {
+  const FIELDS = ['gols', 'escanteios', 'chutes', 'chutes_no_alvo', 'faltas',
+                  'cartoes_amarelos', 'cartoes_vermelhos', 'impedimentos', 'defesas', 'desarmes'];
+  for (const r of teamRows) {
     const slot = aggByTimePeriod.get(r.time);
     if (!slot) continue;
-    if (r.modo === 'FT') slot.FT.defesas = r.defesas ?? 0;
-    if (r.modo === 'HT') slot.HT.defesas = r.defesas ?? 0;
+    const target = r.modo === 'HT' ? slot.HT : slot.FT;
+    for (const f of FIELDS) target[f] = r[f] ?? 0;
   }
+  // Deriva 2T = FT − HT (não-negativo).
   for (const [, slot] of aggByTimePeriod) {
-    slot['2T'].defesas = Math.max(0, (slot.FT.defesas ?? 0) - (slot.HT.defesas ?? 0));
+    for (const f of FIELDS) {
+      slot['2T'][f] = Math.max(0, (slot.FT[f] ?? 0) - (slot.HT[f] ?? 0));
+    }
   }
 
   return { partida, byTime: aggByTimePeriod };
@@ -205,6 +202,14 @@ function evalSlot(pred, stats) {
     }
     return null;
   }
+  if (['escanteios_1x2', 'cartoes_1x2', 'chutes_1x2', 'chutes_alvo_1x2'].includes(pred.family)) {
+    const baseFamily = pred.family.replace(/_1x2$/, '');
+    const h = getActualValue(stats, { family: baseFamily, scope: 'home', period: pred.period || 'FT' });
+    const a = getActualValue(stats, { family: baseFamily, scope: 'away', period: pred.period || 'FT' });
+    if (h == null || a == null) return null;
+    const actual = h > a ? 'home' : h < a ? 'away' : 'draw';
+    return dir === actual ? 'green' : 'red';
+  }
   if (pred.family === 'dupla') {
     const period = String(pred.period || 'FT').toUpperCase();
     let hg, ag;
@@ -243,7 +248,7 @@ function evalSlot(pred, stats) {
     const adjusted = own + pred.line - opp;
     if (adjusted > 0) return 'green';
     if (adjusted < 0) return 'red';
-    return null; // push em linha inteira: deixa não resolvido (sem 'void' no schema)
+    return 'void'; // push em linha inteira: resolvido sem green/red
   }
   // Label markets — direction direto: 'sim'/'nao' (btts), 'home'/'draw'/'away' (1x2).
   // Settler aceita também 'label' (legacy compat) e usa extractLabel(market_key).
@@ -395,7 +400,7 @@ export function settle(db, { run_id, date, liga, dryRun = false, ewmaAlpha = 0.1
   const calibMap = loadCalibrationMap(db, 'A');
   const groups = new Map(); // key family::direction::liga → { n_total, n_green, sum_prob, sum_brier }
 
-  let settled = 0, skipped = 0, no_data = 0, clv_inserted = 0, clv_with_close = 0, clv_invalid_close = 0;
+  let settled = 0, skipped = 0, no_data = 0, voided = 0, clv_inserted = 0, clv_with_close = 0, clv_invalid_close = 0;
   for (const p of preds) {
     const stats = getStats(p.match_id);
     if (!stats) { no_data++; continue; }
@@ -404,6 +409,11 @@ export function settle(db, { run_id, date, liga, dryRun = false, ewmaAlpha = 0.1
     const actual = computeActualValue(p, stats);
     if (!dryRun) update.run(out, actual, p.run_id, p.match_id, p.market_key);
     settled++;
+
+    if (out === 'void') {
+      voided++;
+      continue;
+    }
 
     const isGreen = out === 'green';
     const brier = brierOne(p.fair_prob, isGreen);
@@ -483,7 +493,7 @@ export function settle(db, { run_id, date, liga, dryRun = false, ewmaAlpha = 0.1
     calib_updated = updates.length;
   }
 
-  return { total: preds.length, settled, skipped, no_data, calib_updated, clv_inserted, clv_with_close, clv_invalid_close };
+  return { total: preds.length, settled, skipped, no_data, voided, calib_updated, clv_inserted, clv_with_close, clv_invalid_close };
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
@@ -502,7 +512,7 @@ function parseArgs(argv) {
 if (import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}` ||
     import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'))) {
   const args = parseArgs(process.argv);
-  const dbPath = process.env.SCOUT_DB || resolve(process.cwd(), 'data', 'scout.db');
+  const dbPath = process.env.SCOUT_DB || resolve(process.cwd(), 'data', 'scout_extraction.db');
   const db = new Database(dbPath);
   const r = settle(db, args);
   console.log('[settler]', JSON.stringify(r, null, 2));

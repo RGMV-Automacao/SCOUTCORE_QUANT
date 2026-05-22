@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-const db = new Database(process.env.SCOUT_DB || 'data/scout.db', { readonly: true });
+const db = new Database(process.env.SCOUT_DB || 'data/scout_extraction.db', { readonly: true });
 console.log('tables:', db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(r => r.name));
 const tabExists = (n) => db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(n);
 if (tabExists('prediction')) {

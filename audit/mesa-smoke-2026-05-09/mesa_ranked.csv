@@ -1,6 +1,0 @@
-mesa_id;fixture_index;rank;external_id;liga;date;home;away;market_key;family;fair_prob;market_odd;edge_pct;confidence;certified_slot;weight_a;weight_b;fair_prob_a;fair_prob_b;divergence_pp;phantom_edge_flag;market_gate_reasons
-mesa-2026-05-09;1;1;4zgf2nruglaxakbv5t3s8ll3o;premier-league;2026-05-09;Liverpool;Chelsea;gols_total_ft_over_1_5;gols;0.831853;1.35;12.3;0.6675;true;0.75;0.25;0.8515552077884888;0.7727465010687399;7.88;false;
-mesa-2026-05-09;1;2;4zgf2nruglaxakbv5t3s8ll3o;premier-league;2026-05-09;Liverpool;Chelsea;gols_total_ft_over_2_5;gols;0.597298;1.85;10.5;0.6675;false;0.75;0.25;0.6498287487253694;0.43970771240700646;21.01;false;
-mesa-2026-05-09;1;3;4zgf2nruglaxakbv5t3s8ll3o;premier-league;2026-05-09;Liverpool;Chelsea;cartoes_total_ft_over_3_5;cartoes;0.610721;1.8;9.93;0.5874;false;0.75;0.25;0.5779367367259713;0.7090757156743087;13.11;false;
-mesa-2026-05-09;1;4;4zgf2nruglaxakbv5t3s8ll3o;premier-league;2026-05-09;Liverpool;Chelsea;1x2_total_ft_home;1x2;0.568472;1.9;8.01;0.6675;true;0.55;0.45;0.5723891198080222;0.5636852546109542;0.87;false;
-mesa-2026-05-09;1;5;4zgf2nruglaxakbv5t3s8ll3o;premier-league;2026-05-09;Liverpool;Chelsea;btts_total_ft_sim;btts;0.603587;1.75;5.63;0.6675;true;0.55;0.45;0.6270345208497897;0.5749293993619485;5.21;false;

@@ -9,9 +9,11 @@
 //
 // CLI: --liga BRA1 (opcional), --min-samples 20, --dry-run
 
+import 'dotenv/config';
 import Database from 'better-sqlite3';
 import { fit, saveIsotonicBlob, MIN_SAMPLES, ISOTONIC_VERSION } from '@scoutcore/isotonic';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 
 function parseArgs(argv) {
   const out = { liga: null, minSamples: MIN_SAMPLES, dryRun: false };
@@ -68,7 +70,12 @@ export function refit(db, { liga = null, minSamples = MIN_SAMPLES, dryRun = fals
   return results;
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`) {
+const isMain = process.argv[1] && (
+  import.meta.url === pathToFileURL(process.argv[1]).href ||
+  import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'))
+);
+
+if (isMain) {
   const args = parseArgs(process.argv);
   const dbPath = process.env.SCOUT_DB;
   if (!dbPath) { console.error('SCOUT_DB env required'); process.exit(1); }

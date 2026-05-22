@@ -4,6 +4,7 @@
 // Exporta:
 //   - fetchEventList, fetchEventDetails        (HTTP cliente Superbet)
 //   - eventToRawEntries                        (payload API → rawEntries)
+//   - isCombinableOdd                          (tag API para auditoria de Criar Aposta)
 //   - parseRawEntries                          (rawEntries → records normalizados)
 //   - TOURNAMENT_IDS, getTournamentIdsForLiga  (liga → tournamentId)
 //   - fetchOddsSnapshot                        (high-level: home/away/liga/date → snapshot canônico)
@@ -20,10 +21,10 @@ const __dirname = dirname(__filename);
 const _require = createRequire(import.meta.url);
 
 const { fetchEventList, fetchEventDetails } = _require(resolve(__dirname, 'scraper', 'sb-api-client.cjs'));
-const { eventToRawEntries }                 = _require(resolve(__dirname, 'scraper', 'sb-api-adapter.cjs'));
+const { eventToRawEntries, isCombinableOdd } = _require(resolve(__dirname, 'scraper', 'sb-api-adapter.cjs'));
 const { parseRawEntries }                   = _require(resolve(__dirname, 'scraper', 'sb-odds-parser.cjs'));
 
-export { fetchEventList, fetchEventDetails, eventToRawEntries, parseRawEntries };
+export { fetchEventList, fetchEventDetails, eventToRawEntries, isCombinableOdd, parseRawEntries };
 
 // ── Liga → Superbet tournamentId ─────────────────────────────────────────────
 // IDs verificados (espelhados de opta-extractor/motor/odds-service.js).
@@ -67,6 +68,32 @@ function stripDiacritics(s) {
   return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
 
+let aliasMap = null;
+let aliasReverseMap = null;
+
+function loadTeamAliases() {
+  if (aliasMap) return;
+  aliasMap = new Map();
+  aliasReverseMap = new Map();
+  try {
+    const raw = _require(resolve(__dirname, 'config', 'team-aliases.json'));
+    for (const [canonical, aliases] of Object.entries(raw)) {
+      const all = [canonical, ...(Array.isArray(aliases) ? aliases : [])];
+      const setKey = stripDiacritics(canonical);
+      const set = new Set();
+      for (const alias of all) {
+        const key = stripDiacritics(alias);
+        if (!key) continue;
+        set.add(key);
+        if (!aliasReverseMap.has(key)) aliasReverseMap.set(key, canonical);
+      }
+      aliasMap.set(setKey, set);
+    }
+  } catch {
+    // Arquivo opcional; fallback por tokens cobre casos simples.
+  }
+}
+
 const TEAM_TOKEN_NOISE = new Set([
   'fc','sc','cf','ac','sk','if','bk','sv','ec','ca','cs',
   'mg','sp','rj','rs','pr','ba','pe','go','ce','df','am',
@@ -90,9 +117,21 @@ function _isStrictSubset(a, b) {
 
 function teamsMatch(apiName, dbName) {
   if (!apiName || !dbName) return false;
+  loadTeamAliases();
   const a = stripDiacritics(apiName);
   const b = stripDiacritics(dbName);
   if (a === b) return true;
+
+  const aliasSetA = aliasMap.get(a);
+  const aliasSetB = aliasMap.get(b);
+  if (aliasSetA && aliasSetA.has(b)) return true;
+  if (aliasSetB && aliasSetB.has(a)) return true;
+  const canonOfA = aliasReverseMap.get(a);
+  const canonOfB = aliasReverseMap.get(b);
+  if (canonOfA && canonOfB && canonOfA === canonOfB) return true;
+  if (canonOfA && stripDiacritics(canonOfA) === b) return true;
+  if (canonOfB && stripDiacritics(canonOfB) === a) return true;
+
   const tokA = _teamTokens(apiName);
   const tokB = _teamTokens(dbName);
   if (tokA.length && tokB.length) {
@@ -139,12 +178,23 @@ async function fetchCachedEventList({ tournamentId, date }) {
 
 // ── Denormalização record → linha PT (mercado/selecao/linha) ────────────────
 // Espelha o vocabulário que apps/api/src/routes/runs.mjs:mapOddsKey lê.
-// Retorna null para records que não cabem na tabela odds atual (scope!=total,
-// handicap puro, outcomes 'gol'/'semgol', etc).
+// Retorna null para records que não cabem na tabela odds atual.
+function normalizeRecordScope(scope) {
+  if (!scope || scope === 'total') return 'total';
+  if (scope === 'equipe_home' || scope === 'home') return 'home';
+  if (scope === 'equipe_away' || scope === 'away') return 'away';
+  return null;
+}
+
+function normalizeRecordPeriod(period) {
+  const raw = String(period || 'FT').toLowerCase();
+  if (raw === '1t') return 'ht';
+  return raw;
+}
+
 export function recordToPortugueseRow(rec) {
   if (!rec || !rec.heading || !rec.outcome) return null;
-  // Tabela odds atual só guarda escopo agregado.
-  if (rec.scope && rec.scope !== 'total') return null;
+  if (!normalizeRecordScope(rec.scope)) return null;
 
   const mercado = rec.heading;
   const outcome = rec.outcome;
@@ -160,6 +210,10 @@ export function recordToPortugueseRow(rec) {
   // BTTS (label sim/nao)
   if (outcome === 'sim') return { mercado, selecao: 'Sim',  linha: null };
   if (outcome === 'nao') return { mercado, selecao: 'Não',  linha: null };
+
+  // Ímpar/Par
+  if (outcome === 'par')   return { mercado, selecao: 'Par',    linha: null };
+  if (outcome === 'impar') return { mercado, selecao: 'Ímpar',  linha: null };
 
   // 1X2 e Dupla Chance literais
   if (['1', 'X', '2', '1X', '12', 'X2'].includes(outcome)) {
@@ -184,15 +238,40 @@ export async function fetchOddsSnapshot({ home, away, liga, date }) {
   return { odds_snapshot, event_id, markets_found: Object.keys(odds_snapshot).length, warnings };
 }
 
+export async function fetchOddsRecordsByEventId({ eventId, home, away, timeoutMs, retries }) {
+  const warnings = [];
+  if (!eventId) return { records: [], event_id: null, warnings: ['event_id_ausente'] };
+
+  const payload = await fetchEventDetails(eventId, {
+    ...(Number.isFinite(Number(timeoutMs)) ? { timeoutMs: Number(timeoutMs) } : {}),
+    ...(Number.isFinite(Number(retries)) ? { retries: Number(retries) } : {}),
+  });
+  const rawEntries = eventToRawEntries(payload, { homeTeam: home, awayTeam: away });
+  const { records, skipped } = parseRawEntries(rawEntries, {
+    homeTeam: home, awayTeam: away, matchId: 0, runId: 'scoutcore',
+  });
+  if (skipped.length > 0) warnings.push(`${skipped.length}_entries_ignoradas`);
+
+  return {
+    records: records.map((record) => ({
+      ...record,
+      market_key: canonicalMarketKey(record),
+    })),
+    event_id: String(eventId),
+    warnings,
+  };
+}
+
 function canonicalMarketKey(rec) {
   const { family, scope, period, outcome, line, heading } = rec;
-  const pLow = String(period || 'FT').toLowerCase();
-  if (scope === 'equipe') return null;
+  const pLow = normalizeRecordPeriod(period);
+  const normalizedScope = normalizeRecordScope(scope);
+  if (!normalizedScope) return null;
   if (outcome === 'mais' || outcome === 'menos') {
     if (line == null || !Number.isFinite(Number(line))) return null;
     const direction = outcome === 'mais' ? 'over' : 'under';
     const lineNoDot = String(line).replace('.', '_');
-    return canonicalizeMarketKey(`${family}_${scope}_${pLow}_${direction}_${lineNoDot}`);
+    return canonicalizeMarketKey(`${family}_${normalizedScope}_${pLow}_${direction}_${lineNoDot}`);
   }
   if (family === 'gols' && scope === 'total' && (outcome === 'sim' || outcome === 'nao')) {
     if (!/Ambas as Equipes Marcam$/.test(heading)) return null;
@@ -204,6 +283,15 @@ function canonicalMarketKey(rec) {
   }
   if (family === 'resultado' && ['1X', '12', 'X2'].includes(outcome)) {
     return canonicalizeMarketKey(`resultado_dupla_${pLow}_${outcome.toLowerCase()}`);
+  }
+  // v2.0.0 — Ímpar/Par (gols_oddeven, escanteios_oddeven)
+  if ((family === 'gols_oddeven' || family === 'escanteios_oddeven') && (outcome === 'par' || outcome === 'impar')) {
+    return canonicalizeMarketKey(`${family}_total_${pLow}_${outcome}`);
+  }
+  // v2.0.0 — 1X2 de famílias count (cartoes, chutes, chutes_alvo, escanteios)
+  if (['cartoes', 'chutes', 'chutes_alvo', 'escanteios'].includes(family) && ['1', 'X', '2'].includes(outcome)) {
+    const dir = outcome === '1' ? 'home' : outcome === 'X' ? 'draw' : 'away';
+    return canonicalizeMarketKey(`${family}_1x2_total_${pLow}_${dir}`);
   }
   return null;
 }
@@ -241,21 +329,13 @@ export async function fetchOddsRecords({ home, away, liga, date }) {
     }
     if (tournamentId !== tournamentIds[0]) warnings.push(`tournament_id_fallback:${liga}:${tournamentId}`);
 
-    let payload;
     try {
-      payload = await fetchEventDetails(eventId);
+      const direct = await fetchOddsRecordsByEventId({ eventId, home, away });
+      return { ...direct, warnings: [...warnings, ...direct.warnings] };
     } catch (err) {
       warnings.push(`fetchEventDetails_falhou:${err.message}`);
       return { ...empty, event_id: String(eventId), warnings };
     }
-
-    const rawEntries = eventToRawEntries(payload, { homeTeam: home, awayTeam: away });
-    const { records, skipped } = parseRawEntries(rawEntries, {
-      homeTeam: home, awayTeam: away, matchId: 0, runId: 'scoutcore',
-    });
-    if (skipped.length > 0) warnings.push(`${skipped.length}_entries_ignoradas`);
-
-    return { records, event_id: String(eventId), warnings };
   }
 
   if (diagnostics.every((item) => item.endsWith(':0'))) {

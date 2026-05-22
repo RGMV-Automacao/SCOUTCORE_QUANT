@@ -12,7 +12,7 @@ import { resolve } from 'path';
 
 const liga = process.argv[2] || 'brasileirao';
 const intervalSec = Number(process.argv[3] || 30);
-const SCOUT = process.env.SCOUT_DB || 'data/scout.db';
+const SCOUT = process.env.SCOUT_DB || 'data/scout_extraction.db';
 
 // odds usa apelidos diferentes para algumas ligas
 const ODDS_ALIASES = {

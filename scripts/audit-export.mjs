@@ -10,7 +10,7 @@
 //   - meta.json       : metadados da run
 //
 // Uso (offline, sem servidor): chama predict() diretamente importando o módulo
-// e construindo um repo a partir de data/scout.db.
+// e construindo um repo a partir de data/scout_extraction.db.
 
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -90,7 +90,7 @@ function clvPct(openOdd, closeOdd) {
 function evaluateMarketGate(slot, { gates, minEdgePp = 0 } = {}) {
   const reasons = [];
   if (slot.market_odd == null || slot.edge_pct == null) {
-    return { pass: true, rank_eligible: false, reasons: ['no_market_odd'] };
+    return { pass: false, rank_eligible: false, reasons: ['no_market_odd'] };
   }
   const edgeMin = Math.max(Number(gates?.edge_min_pp ?? 0), Number(minEdgePp ?? 0));
   const evMin = Number(gates?.ev_min_pct ?? 0);
@@ -257,6 +257,7 @@ async function main() {
   // EV ranking + family cap
   const scored = combined
     .filter((s) =>
+      s.certified === true &&
       s.market_odd != null &&
       s.edge_pct != null &&
       s.provenance?.qg?.market_gate?.rank_eligible === true &&

@@ -9,8 +9,7 @@
 //
 // Jobs:
 //   settle-results:         diário às 06:00  (resolve resultados D-1)
-//   rebuild-team-profiles:  semanal segunda 04:00
-//   rebuild-league-priors:  semanal segunda 04:30
+//   rebuild-profiles-priors: semanal segunda 04:00
 //   refit-isotonic:         mensal dia 1 às 05:00
 //   fetch-superbet-odds:    a cada SUPERBET_FETCH_INTERVAL_MIN minutos (default 10),
 //                           gated por SUPERBET_FETCH_ENABLED=true.
@@ -28,16 +27,10 @@ const JOBS = [
     hour: 6, minute: 0, dow: null, dom: null,
   },
   {
-    name: 'rebuild-team-profiles',
-    script: 'apps/jobs/src/rebuild-team-profiles.mjs',
+    name: 'rebuild-profiles-priors',
+    script: 'scripts/rebuild-all-leagues.mjs',
     args: () => [],
     hour: 4, minute: 0, dow: 1, dom: null,
-  },
-  {
-    name: 'rebuild-league-priors',
-    script: 'apps/jobs/src/rebuild-league-priors.mjs',
-    args: () => [],
-    hour: 4, minute: 30, dow: 1, dom: null,
   },
   {
     name: 'refit-isotonic',
@@ -69,7 +62,7 @@ function shouldFireCron(job, now) {
   return true;
 }
 
-import Database from 'better-sqlite3';
+import { Database } from '@scoutcore/data-access';
 import { settleTickets } from './routes/settle-tickets.mjs';
 
 function spawnJob(job, log) {
@@ -83,7 +76,7 @@ function spawnJob(job, log) {
     log.info?.({ job: job.name, code }, '[scheduler] finished');
     if (job.name === 'settle-results' && code === 0) {
       try {
-        const dbPath = process.env.SCOUT_DB || resolve(process.cwd(), 'data', 'scout.db');
+        const dbPath = process.env.SCOUT_DB || resolve(process.cwd(), 'data', 'scout_extraction.db');
         const db = new Database(dbPath);
         const ticketResult = settleTickets(db);
         log.info?.({ ticketResult }, '[scheduler] settleTickets concluído');

@@ -386,17 +386,8 @@ export function predict(ctx) {
   // Derivações Poisson bivariado (gratuitas — usam matrixFT/HT/2T já calculados)
   // ─────────────────────────────────────────────
   slots.push(...derive2T(matrix2T, provBaseGoals));
-  slots.push(...deriveBTTSExtras(matrixFT, matrixHT, matrix2T, provBaseGoals));
-  slots.push(...derive1X2_2T(matrix2T, provBaseGoals));
-  slots.push(...deriveDuplaChance(matrixFT, matrixHT, matrix2T, provBaseGoals));
-  slots.push(...deriveHTFT(matrixHT, matrix2T, provBaseGoals));
-  slots.push(...deriveAsianHandicap(matrixFT, provBaseGoals));
-  slots.push(...deriveDNB(matrixFT, matrixHT, matrix2T, provBaseGoals));
-  slots.push(...deriveCorrectScore(matrixFT, matrixHT, provBaseGoals));
-  slots.push(...deriveMargem(matrixFT, provBaseGoals));
-  slots.push(...deriveMarcaPrimeiroUltimo(lambdaHome, lambdaAway, provBaseGoals));
-  slots.push(...deriveMarca(matrixFT, provBaseGoals));
-  slots.push(...deriveHandicap(matrixFT, provBaseGoals));
+  slots.push(...deriveDuplaChance(matrixFT, matrixHT, provBaseGoals));
+  slots.push(...deriveGolsOddEven(matrixFT, matrixHT, provBaseGoals));
 
   // Famílias contagem auxiliares (Poisson independente por equipe)
   slots.push(...deriveCountAuxiliary({
@@ -404,12 +395,20 @@ export function predict(ctx) {
     profileHome, profileAway, priors, lambdaMult: lm('escanteios'),
   }));
   slots.push(...deriveCountAuxiliary({
+    family: 'chutes', profileKey: 'avg_chutes', leagueTotalKey: 'avg_chutes_total',
+    profileHome, profileAway, priors, lambdaMult: lm('chutes'),
+  }));
+  slots.push(...deriveCountAuxiliary({
+    family: 'chutes_alvo', profileKey: 'avg_chutes_alvo', leagueTotalKey: 'avg_chutes_alvo_total',
+    profileHome, profileAway, priors, lambdaMult: lm('chutes_alvo'),
+  }));
+  slots.push(...deriveCountAuxiliary({
     family: 'cartoes', profileKey: 'avg_cartoes_amarelos', leagueTotalKey: 'avg_cartoes_total',
     profileHome, profileAway, priors, lambdaMult: lm('cartoes'),
     lowConfidence: true,
   }));
 
-  // Chutes no gol (separado de chutes), impedimentos e defesas — Poisson básico
+  // Chutes no gol (separado de chutes), impedimentos, defesas e desarmes — Poisson básico
   slots.push(...predictCountFamily({
     family: 'chutes_alvo',
     profileKey: 'avg_chutes_alvo',
@@ -436,6 +435,15 @@ export function predict(ctx) {
     profileAway,
     priors,
     lambdaMult: lm('defesas'),
+  }));
+  slots.push(...predictCountFamily({
+    family: 'desarmes',
+    profileKey: 'avg_desarmes',
+    leagueTotalKey: 'avg_desarmes_total',
+    profileHome,
+    profileAway,
+    priors,
+    lambdaMult: lm('desarmes'),
   }));
 
   return {
@@ -464,225 +472,95 @@ function derive2T(matrix2T, provBase) {
 }
 
 function deriveBTTSExtras(matrixFT, matrixHT, matrix2T, provBase) {
-  const out = [];
-  const pHT = probBTTS(matrixHT);
-  const p2T = probBTTS(matrix2T);
-  // P(algum tempo) = 1 - P(nenhum tempo) onde P(nenhum tempo) = (1-pHT)*(1-p2T)
-  const pAlgum = 1 - (1 - pHT) * (1 - p2T);
-  for (const m of listMarkets({ family: 'btts_algum_tempo' })) {
-    const p = m.direction === 'sim' ? pAlgum : (1 - pAlgum);
-    out.push(mkSlot(m, p, true, { ...provBase, family: 'btts_algum_tempo' }));
-  }
-  return out;
+  // DEPRECATED v2.0.0 — `btts_algum_tempo` saiu do whitelist Superbet.
+  // Mantido como no-op para compatibilidade caller; remove em refactor futuro.
+  return [];
 }
 
 function derive1X2_2T(matrix2T, provBase) {
-  const out = [];
-  const x = prob1X2(matrix2T);
-  for (const m of listMarkets({ family: '1x2', period: '2T' })) {
-    out.push(mkSlot(m, x[m.direction], true, { ...provBase, family: '1x2', period_scaling: 1 - HT_SCALE_GOLS }));
-  }
-  return out;
+  // DEPRECATED v2.0.0 — `1x2_2t` saiu do whitelist Superbet.
+  return [];
 }
 
-function deriveDuplaChance(matrixFT, matrixHT, matrix2T, provBase) {
+function deriveDuplaChance(matrixFT, matrixHT, provBase) {
   const out = [];
-  const matrices = { FT: matrixFT, HT: matrixHT, '2T': matrix2T };
+  const matrices = { FT: matrixFT, HT: matrixHT };
   for (const m of listMarkets({ family: 'dupla' })) {
-    const x = prob1X2(matrices[m.period]);
+    const mtx = matrices[m.period];
+    if (!mtx) continue;
+    const x = prob1X2(mtx);
     let p;
     if (m.direction === '1x') p = x.home + x.draw;
     else if (m.direction === '12') p = x.home + x.away;
     else if (m.direction === 'x2') p = x.draw + x.away;
-    out.push(mkSlot(m, p, true, { ...provBase, family: 'dupla' }));
+    out.push(mkSlot(m, p, true, { ...provBase, family: 'dupla', ...(m.period === 'HT' ? { period_scaling: HT_SCALE_GOLS } : {}) }));
+  }
+  return out;
+}
+
+/** P(soma de gols par/impar) por matriz Poisson 2D. */
+function deriveGolsOddEven(matrixFT, matrixHT, provBase) {
+  const out = [];
+  const matrices = { FT: matrixFT, HT: matrixHT };
+  for (const m of listMarkets({ family: 'gols_oddeven' })) {
+    const mtx = matrices[m.period];
+    if (!mtx) continue;
+    const M = mtx.length;
+    let pPar = 0, pImpar = 0;
+    for (let i = 0; i < M; i++) for (let j = 0; j < M; j++) {
+      const s = i + j;
+      if (s % 2 === 0) pPar += mtx[i][j];
+      else pImpar += mtx[i][j];
+    }
+    const p = m.direction === 'par' ? pPar : pImpar;
+    out.push(mkSlot(m, p, true, { ...provBase, family: 'gols_oddeven', ...(m.period === 'HT' ? { period_scaling: HT_SCALE_GOLS } : {}) }));
   }
   return out;
 }
 
 function deriveDNB(matrixFT, matrixHT, matrix2T, provBase) {
-  // P(DNB home) = P(home win) / (P(home) + P(away))
-  const out = [];
-  const matrices = { FT: matrixFT, HT: matrixHT, '2T': matrix2T };
-  for (const m of listMarkets({ family: 'dnb' })) {
-    const x = prob1X2(matrices[m.period]);
-    const denom = x.home + x.away;
-    if (denom <= 0) continue; // P(draw)=1 → DNB indefinido; não emite.
-    const p = (m.direction === 'home' ? x.home : x.away) / denom;
-    out.push(mkSlot(m, p, true, { ...provBase, family: 'dnb' }));
-  }
-  return out;
+  // DEPRECATED v2.0.0 — DNB fora do whitelist Superbet.
+  return [];
 }
 
 function deriveHTFT(matrixHT, matrix2T, provBase) {
-  // P(HT=a, FT=b) = P(HT=a) * P(2T resulta em transição a→b)
-  // Aproximação por enumeração: sobre todos os scores HT (i,j) e 2T (i',j'),
-  // soma onde resHT == a e res(i+i', j+j') == b.
-  const out = [];
-  const M = matrixHT.length;
-  // P(htCat, ftCat) acumulado
-  const acc = { '1_1': 0, '1_x': 0, '1_2': 0, 'x_1': 0, 'x_x': 0, 'x_2': 0, '2_1': 0, '2_x': 0, '2_2': 0 };
-  for (let i = 0; i < M; i++) for (let j = 0; j < M; j++) {
-    const pHT = matrixHT[i][j];
-    if (pHT === 0) continue;
-    const htCat = i > j ? '1' : i === j ? 'x' : '2';
-    for (let ip = 0; ip < M; ip++) for (let jp = 0; jp < M; jp++) {
-      const p2 = matrix2T[ip][jp];
-      if (p2 === 0) continue;
-      const fh = i + ip, fa = j + jp;
-      const ftCat = fh > fa ? '1' : fh === fa ? 'x' : '2';
-      acc[`${htCat}_${ftCat}`] += pHT * p2;
-    }
-  }
-  // Renormaliza por fora-da-grade
-  const total = Object.values(acc).reduce((a, b) => a + b, 0);
-  if (total > 0) for (const k of Object.keys(acc)) acc[k] /= total;
-  for (const m of listMarkets({ family: 'htft' })) {
-    out.push(mkSlot(m, acc[m.direction] ?? 0, true, { ...provBase, family: 'htft' }));
-  }
-  return out;
+  // DEPRECATED v2.0.0 — HT/FT fora do whitelist Superbet.
+  return [];
 }
 
 function deriveCorrectScore(matrixFT, matrixHT, provBase) {
-  const out = [];
-  // FT 0..4 grid + overflow (other_home/draw/away)
-  const M = matrixFT.length;
-  let pOtherHome = 0, pOtherDraw = 0, pOtherAway = 0;
-  for (let i = 0; i < M; i++) for (let j = 0; j < M; j++) {
-    if (i <= 4 && j <= 4) continue;
-    if (i > j) pOtherHome += matrixFT[i][j];
-    else if (i === j) pOtherDraw += matrixFT[i][j];
-    else pOtherAway += matrixFT[i][j];
-  }
-  for (const m of listMarkets({ family: 'correct_score', period: 'FT' })) {
-    let p;
-    if (m.direction === 'other_home') p = pOtherHome;
-    else if (m.direction === 'other_draw') p = pOtherDraw;
-    else if (m.direction === 'other_away') p = pOtherAway;
-    else {
-      const [h, a] = m.direction.split('_').map(Number);
-      p = matrixFT[h]?.[a] ?? 0;
-    }
-    out.push(mkSlot(m, p, true, { ...provBase, family: 'correct_score' }));
-  }
-  // HT 0..2 grid + overflow
-  const Mh = matrixHT.length;
-  let pOtherHT = 0;
-  for (let i = 0; i < Mh; i++) for (let j = 0; j < Mh; j++) {
-    if (i <= 2 && j <= 2) continue;
-    pOtherHT += matrixHT[i][j];
-  }
-  for (const m of listMarkets({ family: 'correct_score', period: 'HT' })) {
-    let p;
-    if (m.direction === 'other') p = pOtherHT;
-    else {
-      const [h, a] = m.direction.split('_').map(Number);
-      p = matrixHT[h]?.[a] ?? 0;
-    }
-    out.push(mkSlot(m, p, true, { ...provBase, family: 'correct_score', period_scaling: HT_SCALE_GOLS }));
-  }
-  return out;
+  // DEPRECATED v2.0.0 — Correct Score fora do whitelist Superbet.
+  return [];
 }
 
 function deriveMargem(matrixFT, provBase) {
-  const out = [];
-  const M = matrixFT.length;
-  const acc = { home_1: 0, home_2: 0, home_3: 0, home_4_plus: 0, draw: 0, away_1: 0, away_2: 0, away_3: 0, away_4_plus: 0 };
-  for (let i = 0; i < M; i++) for (let j = 0; j < M; j++) {
-    const p = matrixFT[i][j];
-    if (p === 0) continue;
-    const d = i - j;
-    if (d === 0) acc.draw += p;
-    else if (d > 0) {
-      const k = d >= 4 ? 'home_4_plus' : `home_${d}`;
-      acc[k] += p;
-    } else {
-      const k = -d >= 4 ? 'away_4_plus' : `away_${-d}`;
-      acc[k] += p;
-    }
-  }
-  for (const m of listMarkets({ family: 'margem' })) {
-    out.push(mkSlot(m, acc[m.direction] ?? 0, true, { ...provBase, family: 'margem' }));
-  }
-  return out;
+  // DEPRECATED v2.0.0 — Margem fora do whitelist Superbet.
+  return [];
 }
 
 function deriveMarcaPrimeiroUltimo(lambdaHome, lambdaAway, provBase) {
-  // Aproximação por taxa relativa de gols. Dado que pelo menos 1 gol ocorre,
-  // P(primeiro=home) = lh/(lh+la). P(none) = P(0-0) = e^(-lh-la).
-  const out = [];
-  const sum = lambdaHome + lambdaAway;
-  const pNone = sum > 0 ? Math.exp(-sum) : 1;
-  const pHome = sum > 0 ? (1 - pNone) * (lambdaHome / sum) : 0;
-  const pAway = sum > 0 ? (1 - pNone) * (lambdaAway / sum) : 0;
-  for (const fam of ['marca_primeiro', 'marca_ultimo']) {
-    for (const m of listMarkets({ family: fam })) {
-      const p = m.direction === 'home' ? pHome : m.direction === 'away' ? pAway : pNone;
-      out.push(mkSlot(m, p, true, { ...provBase, family: fam }));
-    }
-  }
-  return out;
+  // DEPRECATED v2.0.0 — Marca Primeiro/Último fora do whitelist Superbet.
+  return [];
 }
 
 function deriveMarca(matrixFT, provBase) {
-  // P(home marca) = 1 - P(home=0) ; idem away
-  const out = [];
-  const M = matrixFT.length;
-  let pH0 = 0, pA0 = 0;
-  for (let j = 0; j < M; j++) pH0 += matrixFT[0][j];
-  for (let i = 0; i < M; i++) pA0 += matrixFT[i][0];
-  const pHome = 1 - pH0;
-  const pAway = 1 - pA0;
-  for (const m of listMarkets({ family: 'marca' })) {
-    let p;
-    if (m.direction === 'home_sim') p = pHome;
-    else if (m.direction === 'home_nao') p = 1 - pHome;
-    else if (m.direction === 'away_sim') p = pAway;
-    else if (m.direction === 'away_nao') p = 1 - pAway;
-    out.push(mkSlot(m, p, true, { ...provBase, family: 'marca' }));
-  }
-  return out;
+  // DEPRECATED v2.0.0 — `marca` fora do whitelist Superbet.
+  return [];
 }
 
 function deriveHandicap(matrixFT, provBase) {
-  const out = [];
-  const M = matrixFT.length;
-  for (const m of listMarkets({ family: 'handicap' })) {
-    const h = m.line; // handicap aplicado à casa
-    let pH = 0, pD = 0, pA = 0;
-    for (let i = 0; i < M; i++) for (let j = 0; j < M; j++) {
-      const eff = (i + h) - j;
-      const p = matrixFT[i][j];
-      if (eff > 0) pH += p;
-      else if (eff === 0) pD += p;
-      else pA += p;
-    }
-    const target = m.direction.startsWith('home') ? pH : m.direction.startsWith('draw') ? pD : pA;
-    out.push(mkSlot(m, target, true, { ...provBase, family: 'handicap', handicap_line: h }));
-  }
-  return out;
+  // DEPRECATED v2.0.0 — handicap europeu de gols fora do whitelist Superbet.
+  return [];
 }
 
 function deriveAsianHandicap(matrixFT, provBase) {
-  // Asian: linha aplicada como diff favorável ao lado. Reporta apenas P(win) puro.
-  // Settle calcula payout (full/half push) em settle.mjs.
-  const out = [];
-  const M = matrixFT.length;
-  for (const m of listMarkets({ family: 'asian_handicap' })) {
-    const h = m.line;
-    let pHomeWin = 0;
-    for (let i = 0; i < M; i++) for (let j = 0; j < M; j++) {
-      const diff = i - j + h;
-      if (diff > 0) pHomeWin += matrixFT[i][j];
-    }
-    const p = m.direction.startsWith('home') ? pHomeWin : (1 - pHomeWin);
-    out.push(mkSlot(m, p, true, { ...provBase, family: 'asian_handicap', asian: true, handicap_line: h }));
-  }
-  return out;
+  // DEPRECATED v2.0.0 — Asian Handicap fora do whitelist Superbet.
+  return [];
 }
 
 function deriveCountAuxiliary({ family, profileKey, leagueTotalKey, profileHome, profileAway, priors, lambdaMult, lowConfidence = false }) {
-  // Para cada família count, deriva 1x2_count, race e exato a partir de
-  // distribuições Poisson independentes home/away.
+  // Para cada família count, deriva _1x2 (FT/HT) por Poisson independente; e,
+  // quando aplicável, _oddeven e _handicap (apenas escanteios).
   const out = [];
   const r = resolveCountLambdas({ profileHome, profileAway, priors, key: profileKey, leagueTotalKey });
   const lh = r.lambdaHome, la = r.lambdaAway;
@@ -694,16 +572,12 @@ function deriveCountAuxiliary({ family, profileKey, leagueTotalKey, profileHome,
   const lhHT = lhFT * htShare;
   const laHT = laFT * htShare;
 
-  // Distribuições truncadas
-  const distHome = (lambda) => {
+  const distVec = (lambda) => {
     const arr = [];
     for (let k = 0; k <= MAX_COUNT; k++) arr.push(poissonPMF(k, lambda));
     return arr;
   };
-  const buildJoint = (lH, lA) => {
-    const dH = distHome(lH), dA = distHome(lA);
-    return { dH, dA };
-  };
+  const buildJoint = (lH, lA) => ({ dH: distVec(lH), dA: distVec(lA) });
 
   const provBase = {
     engine: 'A',
@@ -715,7 +589,7 @@ function deriveCountAuxiliary({ family, profileKey, leagueTotalKey, profileHome,
     ...(lowConfidence ? { low_confidence_family: true } : {}),
   };
 
-  // 1x2 por contagem (FT e HT)
+  // _1x2 por contagem (FT e HT)
   for (const period of ['FT', 'HT']) {
     const fam1x2 = `${family}_1x2`;
     const markets = listMarkets({ family: fam1x2, period });
@@ -730,105 +604,132 @@ function deriveCountAuxiliary({ family, profileKey, leagueTotalKey, profileHome,
     }
     for (const m of markets) {
       const target = m.direction === 'home' ? pH : m.direction === 'draw' ? pD : pA;
-      out.push(mkSlot(m, target, true, provBase));
+      out.push(mkSlot(m, target, true, { ...provBase, ...(period === 'HT' ? { period_scaling: htShare } : {}) }));
     }
   }
 
-  // Race-to-N (apenas FT, family escanteios_race)
+  // Escanteios oddeven (par/impar do total) — FT e HT
   if (family === 'escanteios') {
-    const { dH, dA } = buildJoint(lhFT, laFT);
-    for (const m of listMarkets({ family: 'escanteios_race', period: 'FT' })) {
-      const n = m.line;
-      // Aproximação: probabilidade de o time atingir N antes do outro = P(home>=n e away<n) etc
-      let pH = 0, pA = 0, pNone = 0;
+    for (const period of ['FT', 'HT']) {
+      const markets = listMarkets({ family: 'escanteios_oddeven', period });
+      if (markets.length === 0) continue;
+      const { dH, dA } = buildJoint(period === 'HT' ? lhHT : lhFT, period === 'HT' ? laHT : laFT);
+      let pPar = 0, pImpar = 0;
       for (let i = 0; i < dH.length; i++) for (let j = 0; j < dA.length; j++) {
         const p = dH[i] * dA[j];
-        const hReached = i >= n;
-        const aReached = j >= n;
-        if (hReached && !aReached) pH += p;
-        else if (!hReached && aReached) pA += p;
-        else if (!hReached && !aReached) pNone += p;
-        else {
-          // Ambos atingiram — divide pela proporção das taxas
-          const sum = lhFT + laFT;
-          if (sum > 0) {
-            pH += p * (lhFT / sum);
-            pA += p * (laFT / sum);
-          }
-        }
+        if ((i + j) % 2 === 0) pPar += p; else pImpar += p;
       }
-      const target = m.direction === 'home' ? pH : m.direction === 'away' ? pA : pNone;
-      out.push(mkSlot(m, target, true, provBase));
+      for (const m of markets) {
+        const target = m.direction === 'par' ? pPar : pImpar;
+        out.push(mkSlot(m, target, true, { ...provBase, family: 'escanteios_oddeven', ...(period === 'HT' ? { period_scaling: htShare } : {}) }));
+      }
+    }
+  }
+
+  // Escanteios handicap (direction `home_minus_X_Y` / `home_plus_X_Y` / `away_*`).
+  // Linha sempre fracionária .5 → sem push possível.
+  if (family === 'escanteios') {
+    for (const period of ['FT', 'HT']) {
+      const markets = listMarkets({ family: 'escanteios_handicap', period });
+      if (markets.length === 0) continue;
+      const { dH, dA } = buildJoint(period === 'HT' ? lhHT : lhFT, period === 'HT' ? laHT : laFT);
+      for (const m of markets) {
+        const h = m.line; // handicap aplicado ao home (positivo = favorece home)
+        const side = m.direction.startsWith('home') ? 'home' : 'away';
+        let pHomeAdj = 0;
+        for (let i = 0; i < dH.length; i++) for (let j = 0; j < dA.length; j++) {
+          if ((i + h) > j) pHomeAdj += dH[i] * dA[j];
+        }
+        const target = side === 'home' ? pHomeAdj : (1 - pHomeAdj);
+        out.push(mkSlot(m, target, true, { ...provBase, family: 'escanteios_handicap', handicap_line: h, ...(period === 'HT' ? { period_scaling: htShare } : {}) }));
+      }
     }
   }
 
   return out;
 }
 
-/** Famílias cobertas pela versão atual do Engine A. */
+/** Famílias cobertas pela versão atual do Engine A (v2.0.0 — whitelist Superbet). */
 export function coveredFamilies() {
   return [
     // Gols — matrix conjunta Dixon-Coles
-    { family: 'gols',              scope: 'total', period: 'FT' },
-    { family: 'gols',              scope: 'home',  period: 'FT' },
-    { family: 'gols',              scope: 'away',  period: 'FT' },
-    { family: 'gols',              scope: 'total', period: 'HT' },
-    { family: 'gols',              scope: 'home',  period: 'HT' },
-    { family: 'gols',              scope: 'away',  period: 'HT' },
-    { family: 'gols',              scope: 'total', period: '2T' },
-    // 1x2 — matrix FT/HT/2T
-    { family: '1x2',               scope: 'total', period: 'FT' },
-    { family: '1x2',               scope: 'total', period: 'HT' },
-    { family: '1x2',               scope: 'total', period: '2T' },
-    // Asian Handicap — matrix FT
-    { family: 'asian_handicap',    scope: 'total', period: 'FT' },
+    { family: 'gols',                scope: 'total', period: 'FT' },
+    { family: 'gols',                scope: 'home',  period: 'FT' },
+    { family: 'gols',                scope: 'away',  period: 'FT' },
+    { family: 'gols',                scope: 'total', period: 'HT' },
+    { family: 'gols',                scope: 'home',  period: 'HT' },
+    { family: 'gols',                scope: 'away',  period: 'HT' },
+    { family: 'gols',                scope: 'total', period: '2T' },
+    { family: 'gols_oddeven',        scope: 'total', period: 'FT' },
+    { family: 'gols_oddeven',        scope: 'total', period: 'HT' },
+    // 1x2 / Dupla — matrix FT/HT
+    { family: '1x2',                 scope: 'total', period: 'FT' },
+    { family: '1x2',                 scope: 'total', period: 'HT' },
+    { family: 'dupla',               scope: 'total', period: 'FT' },
+    { family: 'dupla',               scope: 'total', period: 'HT' },
     // BTTS — matrix FT/HT
-    { family: 'btts',              scope: 'total', period: 'FT' },
-    { family: 'btts',              scope: 'total', period: 'HT' },
-    { family: 'btts_algum_tempo',  scope: 'total', period: 'FULL' },
+    { family: 'btts',                scope: 'total', period: 'FT' },
+    { family: 'btts',                scope: 'total', period: 'HT' },
     // Cartões — Poisson independente (low confidence)
-    { family: 'cartoes',           scope: 'total', period: 'FT', low_confidence: true },
-    { family: 'cartoes',           scope: 'home',  period: 'FT', low_confidence: true },
-    { family: 'cartoes',           scope: 'away',  period: 'FT', low_confidence: true },
-    { family: 'cartoes_1x2',      scope: 'total', period: 'FT', low_confidence: true },
-    // Chutes — Poisson independente
-    { family: 'chutes',            scope: 'total', period: 'FT' },
-    { family: 'chutes',            scope: 'home',  period: 'FT' },
-    { family: 'chutes',            scope: 'away',  period: 'FT' },
-    { family: 'chutes_alvo',       scope: 'total', period: 'FT' },
-    // Correct Score — matrix FT/HT
-    { family: 'correct_score',     scope: 'total', period: 'FT' },
-    { family: 'correct_score',     scope: 'total', period: 'HT' },
-    // Defesas — Poisson independente
-    { family: 'defesas',           scope: 'total', period: 'FT' },
-    // DNB — matrix FT/HT/2T
-    { family: 'dnb',               scope: 'total', period: 'FT' },
-    // Dupla Chance — matrix FT/HT/2T
-    { family: 'dupla',             scope: 'total', period: 'FT' },
-    { family: 'dupla',             scope: 'total', period: 'HT' },
-    { family: 'dupla',             scope: 'total', period: '2T' },
-    // Escanteios — Poisson independente
-    { family: 'escanteios',        scope: 'total', period: 'FT' },
-    { family: 'escanteios',        scope: 'home',  period: 'FT' },
-    { family: 'escanteios',        scope: 'away',  period: 'FT' },
-    { family: 'escanteios',        scope: 'total', period: 'HT' },
-    { family: 'escanteios',        scope: 'home',  period: 'HT' },
-    { family: 'escanteios',        scope: 'away',  period: 'HT' },
-    { family: 'escanteios_1x2',   scope: 'total', period: 'FT' },
-    { family: 'escanteios_race',  scope: 'total', period: 'FT' },
-    // Faltas — Poisson independente (low confidence)
-    { family: 'faltas',            scope: 'total', period: 'FT', low_confidence: true },
-    // Handicap Europeu — matrix FT
-    { family: 'handicap',          scope: 'total', period: 'FT' },
-    // HTFT — matrix HT×2T
-    { family: 'htft',              scope: 'total', period: 'FULL' },
-    // Impedimentos — Poisson independente
-    { family: 'impedimentos',      scope: 'total', period: 'FT' },
-    // Marca / Marca Primeiro / Marca Último — taxa relativa λ
-    { family: 'marca',             scope: 'total', period: 'FT' },
-    { family: 'marca_primeiro',    scope: 'total', period: 'FT' },
-    { family: 'marca_ultimo',      scope: 'total', period: 'FT' },
-    // Margem — matrix FT
-    { family: 'margem',            scope: 'total', period: 'FT' },
+    { family: 'cartoes',             scope: 'total', period: 'FT', low_confidence: true },
+    { family: 'cartoes',             scope: 'home',  period: 'FT', low_confidence: true },
+    { family: 'cartoes',             scope: 'away',  period: 'FT', low_confidence: true },
+    { family: 'cartoes',             scope: 'total', period: 'HT', low_confidence: true },
+    { family: 'cartoes',             scope: 'home',  period: 'HT', low_confidence: true },
+    { family: 'cartoes',             scope: 'away',  period: 'HT', low_confidence: true },
+    { family: 'cartoes_1x2',         scope: 'total', period: 'FT', low_confidence: true },
+    { family: 'cartoes_1x2',         scope: 'total', period: 'HT', low_confidence: true },
+    // Chutes (Finalizações) — Poisson independente
+    { family: 'chutes',              scope: 'total', period: 'FT' },
+    { family: 'chutes',              scope: 'home',  period: 'FT' },
+    { family: 'chutes',              scope: 'away',  period: 'FT' },
+    { family: 'chutes',              scope: 'total', period: 'HT' },
+    { family: 'chutes',              scope: 'home',  period: 'HT' },
+    { family: 'chutes',              scope: 'away',  period: 'HT' },
+    { family: 'chutes_1x2',          scope: 'total', period: 'FT' },
+    { family: 'chutes_1x2',          scope: 'total', period: 'HT' },
+    // Chutes no gol — Poisson independente
+    { family: 'chutes_alvo',         scope: 'total', period: 'FT' },
+    { family: 'chutes_alvo',         scope: 'home',  period: 'FT' },
+    { family: 'chutes_alvo',         scope: 'away',  period: 'FT' },
+    { family: 'chutes_alvo',         scope: 'total', period: 'HT' },
+    { family: 'chutes_alvo',         scope: 'home',  period: 'HT' },
+    { family: 'chutes_alvo',         scope: 'away',  period: 'HT' },
+    { family: 'chutes_alvo_1x2',     scope: 'total', period: 'FT' },
+    { family: 'chutes_alvo_1x2',     scope: 'total', period: 'HT' },
+    // Defesas / Desarmes — Poisson independente
+    { family: 'defesas',             scope: 'total', period: 'FT' },
+    { family: 'defesas',             scope: 'home',  period: 'FT' },
+    { family: 'defesas',             scope: 'away',  period: 'FT' },
+    { family: 'defesas',             scope: 'total', period: 'HT' },
+    { family: 'defesas',             scope: 'home',  period: 'HT' },
+    { family: 'defesas',             scope: 'away',  period: 'HT' },
+    { family: 'desarmes',            scope: 'total', period: 'FT' },
+    { family: 'desarmes',            scope: 'home',  period: 'FT' },
+    { family: 'desarmes',            scope: 'away',  period: 'FT' },
+    // Escanteios — Poisson independente + derivados
+    { family: 'escanteios',          scope: 'total', period: 'FT' },
+    { family: 'escanteios',          scope: 'home',  period: 'FT' },
+    { family: 'escanteios',          scope: 'away',  period: 'FT' },
+    { family: 'escanteios',          scope: 'total', period: 'HT' },
+    { family: 'escanteios',          scope: 'home',  period: 'HT' },
+    { family: 'escanteios',          scope: 'away',  period: 'HT' },
+    { family: 'escanteios_1x2',      scope: 'total', period: 'FT' },
+    { family: 'escanteios_1x2',      scope: 'total', period: 'HT' },
+    { family: 'escanteios_handicap', scope: 'total', period: 'FT' },
+    { family: 'escanteios_handicap', scope: 'total', period: 'HT' },
+    { family: 'escanteios_oddeven',  scope: 'total', period: 'FT' },
+    { family: 'escanteios_oddeven',  scope: 'total', period: 'HT' },
+    // Faltas — Poisson (low confidence)
+    { family: 'faltas',              scope: 'total', period: 'FT', low_confidence: true },
+    { family: 'faltas',              scope: 'home',  period: 'FT', low_confidence: true },
+    { family: 'faltas',              scope: 'away',  period: 'FT', low_confidence: true },
+    { family: 'faltas',              scope: 'total', period: 'HT', low_confidence: true },
+    { family: 'faltas',              scope: 'home',  period: 'HT', low_confidence: true },
+    { family: 'faltas',              scope: 'away',  period: 'HT', low_confidence: true },
+    // Impedimentos — Poisson
+    { family: 'impedimentos',        scope: 'total', period: 'FT' },
+    { family: 'impedimentos',        scope: 'home',  period: 'FT' },
+    { family: 'impedimentos',        scope: 'away',  period: 'FT' },
   ];
 }

@@ -6,6 +6,7 @@
  *
  * Params suportados:
  *   min_edge_pct      Mínimo de edge %
+ *   min_ev_real       Mínimo de EV real recalculado (fair_prob * market_odd - 1)
  *   min_prob           Mínimo de fair_prob
  *   require_market_odd Se true, exclui slots sem market_odd
  *   rank_by            'ev_real' | 'edge_pct' | 'fair_prob' | 'confidence'
@@ -38,6 +39,7 @@ function rankValue(slot, rankBy) {
  */
 export function run(slots, params = {}) {
   const minEdge  = params.min_edge_pct ?? 0;
+  const minEv    = params.min_ev_real ?? -Infinity;
   const minProb  = params.min_prob ?? 0;
   const needOdd  = params.require_market_odd ?? false;
   const rankBy   = params.rank_by ?? 'ev_real';
@@ -46,6 +48,7 @@ export function run(slots, params = {}) {
   const filtered = slots.filter((s) => {
     if (!s.certified) return false;
     if ((s.edge_pct ?? 0) < minEdge) return false;
+    if (evReal(s) < minEv) return false;
     if ((s.fair_prob ?? 0) < minProb) return false;
     if (needOdd && (s.market_odd == null || s.market_odd <= 1)) return false;
     return true;

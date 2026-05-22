@@ -12,7 +12,7 @@ import { buildLookupPlan } from '../../../scripts/lib/superbet-mapping.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '../../..');
-const DEFAULT_DB = resolve(ROOT, 'data', 'scout.db');
+const DEFAULT_DB = resolve(ROOT, 'data', 'scout_extraction.db');
 const DEFAULT_OUT = resolve(ROOT, 'audit', `closing-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
 
 function parseArgs(argv = process.argv.slice(2)) {

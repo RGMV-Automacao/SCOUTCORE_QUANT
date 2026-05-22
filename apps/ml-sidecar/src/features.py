@@ -32,7 +32,6 @@ _SQL_TEAM_HIST = """
     FROM partidas
     WHERE liga = ?
       AND status = 'Played'
-      AND modo = 'FT'
       AND home_goals IS NOT NULL
       AND data_partida < ?
       AND (home_team = ? OR away_team = ?)
@@ -45,7 +44,6 @@ _SQL_H2H = """
     FROM partidas
     WHERE liga = ?
       AND status = 'Played'
-      AND modo = 'FT'
       AND home_goals IS NOT NULL
       AND data_partida < ?
       AND ((home_team = ? AND away_team = ?) OR (home_team = ? AND away_team = ?))
@@ -67,20 +65,26 @@ def _get_h2h(con: sqlite3.Connection, liga: str, home: str, away: str,
 
 
 # ---------------------------------------------------------------------------
-# eventos_faixa — totais por confronto pré-cacheados (train.py popula; server.py usa DB)
+# times — totais por confronto/equipe (modo='FT'). Fonte canônica desde a
+# Fase 4 do refactor Superbet v2.0.0; `eventos_faixa` foi descontinuada
+# como leitura.
 # ---------------------------------------------------------------------------
 
-_SQL_EV_TOTALS = """
-    SELECT SUM(escanteios) AS esc, SUM(chutes) AS ch, SUM(chutes_no_alvo) AS sot,
-           SUM(faltas) AS fl, SUM(cartoes_amarelos + cartoes_vermelhos) AS cards
-    FROM eventos_faixa
-    WHERE id_confronto = ?
+_SQL_EV_TOTALS_BY_TEAM = """
+    SELECT escanteios, chutes, chutes_no_alvo, faltas,
+           COALESCE(cartoes_amarelos, 0) + COALESCE(cartoes_vermelhos, 0) AS cards
+      FROM times
+     WHERE id_confronto = ?
+       AND time = ?
+       AND modo = 'FT'
+     LIMIT 1
 """
 
 
-def _get_event_totals(con: sqlite3.Connection, id_confronto: str) -> Optional[dict]:
-    """Totais de contagem para um confronto. None se não houver dados."""
-    row = con.execute(_SQL_EV_TOTALS, (id_confronto,)).fetchone()
+def _get_event_totals(con: sqlite3.Connection, id_confronto: str,
+                      team: str) -> Optional[dict]:
+    """Totais por equipe para um confronto. None se não houver dados."""
+    row = con.execute(_SQL_EV_TOTALS_BY_TEAM, (id_confronto, team)).fetchone()
     if row is None or row[0] is None:
         return None
     return {
@@ -128,18 +132,15 @@ def _team_stats(hist: list, team: str, con: sqlite3.Connection = None) -> Option
             else:
                 pts5.append(3 if ag > hg else (1 if hg == ag else 0))
 
-        # Contagem por confronto — usa cache local se disponível, senão DB
+        # Contagem por confronto — `times` (modo='FT'), per-team direto.
         if con is not None and idc:
-            ev = _get_event_totals(con, idc)
+            ev = _get_event_totals(con, idc, team)
             if ev is not None:
-                # Dividir por 2 (total = soma dos dois times; queremos por time)
-                # Na verdade, eventos_faixa é por time. O total é a soma.
-                # Para features de time, é melhor usar total/2 como proxy.
-                esc_list.append(ev["escanteios"] / 2)
-                ch_list.append(ev["chutes"] / 2)
-                sot_list.append(ev["chutes_alvo"] / 2)
-                fl_list.append(ev["faltas"] / 2)
-                cards_list.append(ev["cartoes"] / 2)
+                esc_list.append(ev["escanteios"])
+                ch_list.append(ev["chutes"])
+                sot_list.append(ev["chutes_alvo"])
+                fl_list.append(ev["faltas"])
+                cards_list.append(ev["cartoes"])
 
     if not gm:
         return None

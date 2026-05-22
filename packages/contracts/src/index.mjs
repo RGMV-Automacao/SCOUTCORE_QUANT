@@ -5,23 +5,22 @@ import { z } from 'zod';
 
 // ────────── Domínio base ──────────
 //
-// FAMILIES: lista exaustiva — DEVE bater com `packages/markets/src/registry.mjs`.
-// Quando um family novo for adicionado ao registry, adicionar aqui também.
-// PERIODS: 'FULL' é usado por mercados acumulados como htft, que dependem do
-// jogo inteiro mas não são separáveis em FT/HT/2T.
-// DIRECTIONS: regex permissivo — o universo segue amplo (htft 1_1,
-// asian_handicap home_minus_2..away_plus_2, escanteios_race home_3..none_7,
-// etc.). Manter enum exaustivo aqui criaria drift permanente vs registry.
+// FAMILIES: whitelist canônica Superbet (escopo único v2.0.0).
+// DEVE bater 1:1 com `WHITELIST_FAMILIES` em `packages/markets/src/registry.mjs`.
+// PERIODS: 'FULL' mantido por compatibilidade histórica (não há mais família
+// que use FULL no whitelist atual; pode ser removido em refactor futuro).
+// DIRECTIONS: regex permissivo — direções como `home_minus_2_5` (escanteios
+// handicap), `par`/`impar` (oddeven) e `1x`/`12`/`x2` (dupla) tornam um enum
+// estrito inviável.
 export const FAMILIES = [
-  'gols', 'btts', '1x2', 'escanteios', 'chutes', 'cartoes', 'faltas',
-  'btts_algum_tempo',
-  'dupla', 'htft',
-  'asian_handicap',
-  'escanteios_1x2', 'escanteios_race',
-  'chutes_alvo', 'cartoes_1x2', 'impedimentos', 'defesas',
-  'dnb', 'correct_score', 'margem',
-  'marca_primeiro', 'marca_ultimo', 'marca',
-  'handicap',
+  '1x2', 'dupla',
+  'gols', 'btts', 'gols_oddeven',
+  'cartoes', 'cartoes_1x2',
+  'chutes', 'chutes_1x2',
+  'chutes_alvo', 'chutes_alvo_1x2',
+  'defesas', 'desarmes',
+  'escanteios', 'escanteios_1x2', 'escanteios_handicap', 'escanteios_oddeven',
+  'faltas', 'impedimentos',
 ];
 export const SCOPES   = ['total', 'home', 'away'];
 export const PERIODS  = ['FT', 'HT', '2T', 'FULL'];
@@ -63,6 +62,7 @@ export const EngineATeamProfileZ = z.object({
   avg_faltas_cometidas: FiniteNumberZ.optional(),
   avg_impedimentos: FiniteNumberZ.optional(),
   avg_defesas: FiniteNumberZ.optional(),
+  avg_desarmes: FiniteNumberZ.optional(),
 }).passthrough();
 
 export const EngineALeaguePriorsZ = z.object({
@@ -74,6 +74,7 @@ export const EngineALeaguePriorsZ = z.object({
   avg_faltas_total: FiniteNumberZ.optional(),
   avg_impedimentos_total: FiniteNumberZ.optional(),
   avg_defesas_total: FiniteNumberZ.optional(),
+  avg_desarmes_total: FiniteNumberZ.optional(),
 }).passthrough();
 
 export const EngineACalibrationEntryZ = z.object({
