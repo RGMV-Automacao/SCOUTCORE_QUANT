@@ -833,6 +833,14 @@ export default function ScoutCorePage() {
   const [yankeeSubmitNotice, setYankeeSubmitNotice] = useState<string | null>(null);
   const [yankeeHover,         setYankeeHover]         = useState<any>(null);
   const yankeeSubmitTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Execução em tempo real — console + polling de tickets
+  const [yankeeExecProgress, setYankeeExecProgress] = useState<any>(null);        // dados do polling
+  const [yankeeExecAutoScroll, setYankeeExecAutoScroll] = useState(true);
+  const [yankeeExecShowRaw, setYankeeExecShowRaw] = useState(false);
+  const [yankeeRetryFailedLoading, setYankeeRetryFailedLoading] = useState(false);
+  const yankeeTicketPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const yankeeExecConsoleRef = useRef<HTMLDivElement>(null);
+  const [yankeeExecStartedAt, setYankeeExecStartedAt] = useState<Date | null>(null);
 
   // Yankee manual — seleção operacional a partir do Resolver
   const [manualYankeeLegs, setManualYankeeLegs] = useState<ManualYankeeLeg[]>([]);
@@ -849,6 +857,7 @@ export default function ScoutCorePage() {
   const [predsLoading, setPredsLoading] = useState(false);
   const [resolverSearch,       setResolverSearch]       = useState("");
   const [resolverLiga,         setResolverLiga]         = useState("all");
+  const [resolverMatch,        setResolverMatch]        = useState("all");
   const [resolverTeam,         setResolverTeam]         = useState("all");
   const [resolverFamily,       setResolverFamily]       = useState("all");
   const [resolverMarket,       setResolverMarket]       = useState("all");
@@ -890,6 +899,7 @@ export default function ScoutCorePage() {
   const resetResolverFilters = useCallback(() => {
     setResolverSearch("");
     setResolverLiga("all");
+    setResolverMatch("all");
     setResolverTeam("all");
     setResolverFamily("all");
     setResolverMarket("all");
@@ -1070,6 +1080,8 @@ export default function ScoutCorePage() {
     resetResolverFilters();
     setYankeeDryRunResult(null); setYankeeSubmitResult(null); setYankeeSubmitNotice(null);
     setYankeeSubmitConfirm(false); setYankeeSubmitCountdown(null);
+    setYankeeExecProgress(null); setYankeeExecStartedAt(null);
+    if (yankeeTicketPollRef.current) { clearInterval(yankeeTicketPollRef.current); yankeeTicketPollRef.current = null; }
     setManualYankeeLegs([]); setManualYankeeDryRunResult(null); setManualYankeeSubmitResult(null);
     setManualYankeeSubmitConfirm(false); setManualYankeeSubmitCountdown(null);
     setProgress(null);
@@ -1273,7 +1285,24 @@ export default function ScoutCorePage() {
     setYankeeSubmitLoading(true);
     setYankeeSubmitResult(null);
     setYankeeSubmitNotice(null);
+    setYankeeExecProgress(null);
+    setYankeeExecStartedAt(new Date());
     setError(null);
+    // Inicia polling de progresso por ticket
+    const runIdForPoll = runData.run_id;
+    if (yankeeTicketPollRef.current) clearInterval(yankeeTicketPollRef.current);
+    yankeeTicketPollRef.current = setInterval(async () => {
+      try {
+        const pr = await fetch(`${API_BASE}/v1/runs/${runIdForPoll}/yankee/submissions/current/ticket-progress`);
+        if (pr.ok) {
+          const pd = await pr.json();
+          setYankeeExecProgress(pd);
+          if (yankeeExecConsoleRef.current && yankeeExecAutoScroll) {
+            yankeeExecConsoleRef.current.scrollTop = yankeeExecConsoleRef.current.scrollHeight;
+          }
+        }
+      } catch { /* silencioso */ }
+    }, 1200);
     try {
       const r = await fetch(`${API_BASE}/v1/runs/${runData.run_id}/yankee/submit`, {
         method: "POST",
@@ -1304,7 +1333,36 @@ export default function ScoutCorePage() {
       setYankeeSubmitNotice(`Falha no submit: ${e.message ?? "erro desconhecido"}`);
       setError(`Yankee submit: ${e.message ?? "erro desconhecido"}`);
     } finally {
+      // Para o polling e faz uma última leitura para sincronizar
+      if (yankeeTicketPollRef.current) { clearInterval(yankeeTicketPollRef.current); yankeeTicketPollRef.current = null; }
+      try {
+        const pr = await fetch(`${API_BASE}/v1/runs/${runIdForPoll}/yankee/submissions/current/ticket-progress`);
+        if (pr.ok) setYankeeExecProgress(await pr.json());
+      } catch { /* silencioso */ }
       setYankeeSubmitLoading(false);
+    }
+  };
+
+  const handleYankeeRetryFailed = async (submissionId: string) => {
+    if (!runData?.run_id || !submissionId) return;
+    setYankeeRetryFailedLoading(true);
+    try {
+      const r = await fetch(`${API_BASE}/v1/runs/${runData.run_id}/yankee/submissions/${submissionId}/retry-failed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
+      setYankeeSubmitResult((prev: any) => ({ ...(prev ?? {}), ...data }));
+      setYankeeSubmitNotice(`Retry falhos: ${data.status ?? "sem status"}.`);
+      // Atualiza progresso
+      const pr = await fetch(`${API_BASE}/v1/runs/${runData.run_id}/yankee/submissions/current/ticket-progress`);
+      if (pr.ok) setYankeeExecProgress(await pr.json());
+    } catch (e: any) {
+      setError(`Retry falhos: ${e.message ?? "erro desconhecido"}`);
+    } finally {
+      setYankeeRetryFailedLoading(false);
     }
   };
 
@@ -1672,6 +1730,8 @@ export default function ScoutCorePage() {
     setYankeeData(null); setPicksData(null); setDuplasData(null);
     setSettleResult(null); setDryRunResult(null);
     setYankeeDryRunResult(null); setYankeeSubmitResult(null); setYankeeSubmitNotice(null);
+    setYankeeExecProgress(null); setYankeeExecStartedAt(null);
+    if (yankeeTicketPollRef.current) { clearInterval(yankeeTicketPollRef.current); yankeeTicketPollRef.current = null; }
     setSettleConfirm(false); setSettleCountdown(null);
     setResolverActivity(null);
     setYankeeHover(null);
@@ -1846,8 +1906,23 @@ export default function ScoutCorePage() {
     if (period === "ht" || period === "1t" || key.includes("_ht_") || key.includes("_1t_") || key.includes("first_half")) return "ht";
     return "ft";
   };
+  const resolverMatchKeyOf = (row: ResolverPredictionRow) => {
+    const matchId = String(row?.match_id ?? "").trim();
+    if (matchId) return matchId;
+    const home = String(row?.home ?? "").trim();
+    const away = String(row?.away ?? "").trim();
+    return home || away ? `${home}|${away}` : "";
+  };
+  const resolverMatchLabelOf = (row: ResolverPredictionRow) => {
+    const home = String(row?.home ?? "").trim();
+    const away = String(row?.away ?? "").trim();
+    if (home && away) return `${home} × ${away}`;
+    const matchId = String(row?.match_id ?? "").trim();
+    return knownMatchLabelById.get(matchId) ?? matchId ?? "Sem confronto";
+  };
   const resolverFacets = useMemo(() => {
     const countBy = new Map<string, number>();
+    const matchBy = new Map<string, { label: string; count: number }>();
     const teamBy = new Map<string, number>();
     const familyBy = new Map<string, number>();
     const marketBy = new Map<string, { label: string; count: number }>();
@@ -1858,6 +1933,14 @@ export default function ScoutCorePage() {
     };
     for (const row of resolverAllRows) {
       bump(countBy, row.liga);
+      const matchKey = resolverMatchKeyOf(row);
+      if (matchKey) {
+        const current = matchBy.get(matchKey);
+        matchBy.set(matchKey, {
+          label: current?.label ?? resolverMatchLabelOf(row),
+          count: (current?.count ?? 0) + 1,
+        });
+      }
       bump(teamBy, row.home);
       bump(teamBy, row.away);
       bump(familyBy, row.family);
@@ -1878,6 +1961,12 @@ export default function ScoutCorePage() {
     ];
     return {
       ligas: optionsFromCounts(countBy, "Todas as ligas"),
+      matches: [
+        { value: "all", label: `Todos os confrontos (${matchBy.size})` },
+        ...[...matchBy.entries()]
+          .sort((a, b) => a[1].label.localeCompare(b[1].label) || b[1].count - a[1].count)
+          .map(([value, item]) => ({ value, label: `${item.label} (${item.count})` })),
+      ],
       teams: optionsFromCounts(teamBy, "Todos os times"),
       families: optionsFromCounts(familyBy, "Todas as famílias"),
       markets: [
@@ -1891,6 +1980,7 @@ export default function ScoutCorePage() {
   const resolverActiveFilters =
     (resolverSearch.trim() ? 1 : 0) +
     (resolverLiga !== "all" ? 1 : 0) +
+    (resolverMatch !== "all" ? 1 : 0) +
     (resolverTeam !== "all" ? 1 : 0) +
     (resolverFamily !== "all" ? 1 : 0) +
     (resolverMarket !== "all" ? 1 : 0) +
@@ -1902,6 +1992,7 @@ export default function ScoutCorePage() {
     const q = resolverSearch.trim().toLowerCase();
     const rows = resolverAllRows.filter((row) => {
       if (resolverLiga !== "all" && row.liga !== resolverLiga) return false;
+      if (resolverMatch !== "all" && resolverMatchKeyOf(row) !== resolverMatch) return false;
       if (resolverTeam !== "all" && row.home !== resolverTeam && row.away !== resolverTeam) return false;
       if (resolverFamily !== "all" && row.family !== resolverFamily) return false;
       if (resolverMarket !== "all" && row.market_key !== resolverMarket) return false;
@@ -1912,7 +2003,8 @@ export default function ScoutCorePage() {
       if (resolverBoardOnly && !inBoard(row.home, row.away)) return false;
       if (!q) return true;
       const marketLabel = prettyMarket(row, { home: row.home ?? undefined, away: row.away ?? undefined });
-      return [row.home, row.away, row.liga, row.family, row.market_key, marketLabel, row.match_id]
+      const matchLabel = resolverMatchLabelOf(row);
+      return [row.home, row.away, row.liga, row.family, row.market_key, marketLabel, matchLabel, row.match_id]
         .some((value) => String(value ?? "").toLowerCase().includes(q));
     });
     return rows.sort((a, b) => {
@@ -1932,7 +2024,7 @@ export default function ScoutCorePage() {
       }
       return edgeB - edgeA;
     });
-  }, [resolverAllRows, resolverSearch, resolverLiga, resolverTeam, resolverFamily, resolverMarket, resolverResultFilter, resolverOddFilter, resolverPeriodFilter, resolverBoardOnly, resolverSort, inBoard]);
+  }, [resolverAllRows, resolverSearch, resolverLiga, resolverMatch, resolverTeam, resolverFamily, resolverMarket, resolverResultFilter, resolverOddFilter, resolverPeriodFilter, resolverBoardOnly, resolverSort, inBoard]);
   const visiblePredRows: ResolverPredictionRow[] = resolverFilteredRows.slice(0, 500);
   const hiddenPredRows = Math.max(0, resolverFilteredRows.length - visiblePredRows.length);
 
@@ -2872,8 +2964,27 @@ export default function ScoutCorePage() {
 
                 {/* Controles de submissão (Bloco 3.4) ─────────────────────── */}
                 <div className={`${SOFT_CARD} p-4 space-y-3`}>
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Submissão</h3>
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Submit Yankee Bookline</h3>
+                      {(() => {
+                        const execTkts: any[] = yankeeExecProgress?.tickets ?? [];
+                        const subCount = execTkts.filter((t: any) => t.status === "submitted" || t.status === "duplicate_skipped").length;
+                        const failCount = execTkts.filter((t: any) => t.status === "failed").length;
+                        const pendCount = execTkts.filter((t: any) => ["pending","submitting","dry_ok"].includes(t.status)).length;
+                        const reenviáveis = failCount + pendCount;
+                        if (execTkts.length === 0) return null;
+                        return (
+                          <span className="text-[11px] font-mono text-white/50">
+                            <span className="text-white/70">{reenviáveis}</span> reenviáveis
+                            {" · "}
+                            <span className="text-emerald-300/85">{subCount}</span> submetidos
+                            {" · "}
+                            run <span className="text-white/60">{runData?.run_id ?? "—"}</span>
+                          </span>
+                        );
+                      })()}
+                    </div>
                     <span className="text-xs text-gray-600">Alvo real: <span className="text-white font-mono font-semibold">R$ {(yankeeSubmitSelectedCount * yankeeStake).toFixed(2)}</span></span>
                   </div>
 
@@ -2964,6 +3075,196 @@ export default function ScoutCorePage() {
                       )}
                     </div>
                   )}
+
+                  {/* ── Console de execução em tempo real ─────────────────── */}
+                  {(yankeeSubmitLoading || yankeeExecProgress) && (() => {
+                    const prog = yankeeExecProgress;
+                    const execTickets: any[] = prog?.tickets ?? [];
+                    const total = execTickets.length;
+                    const submitted = execTickets.filter((t: any) => t.status === "submitted").length;
+                    const failed = execTickets.filter((t: any) => t.status === "failed").length;
+                    const dupes = execTickets.filter((t: any) => t.status === "duplicate_skipped").length;
+                    const inProg = execTickets.filter((t: any) => t.status === "submitting").length;
+                    const pending = execTickets.filter((t: any) => ["pending","dry_ok"].includes(t.status)).length;
+                    const isRunning = yankeeSubmitLoading;
+                    const execSubId = prog?.submission_id ?? "—";
+                    const startedTime = yankeeExecStartedAt ? yankeeExecStartedAt.toLocaleTimeString("pt-BR") : "—";
+                    const pct = total > 0 ? ((submitted + dupes) / total) * 100 : 0;
+                    return (
+                      <div className="rounded-xl border border-emerald-500/20 bg-[#0c1210] shadow-[0_8px_24px_rgba(0,0,0,0.45)] overflow-hidden">
+                        {/* Sub-header */}
+                        <div className="border-b border-emerald-500/12 px-3 py-2 font-mono text-[11px] text-emerald-300/70">
+                          REAL iniciado: <span className="text-white/75">{execSubId}</span>
+                        </div>
+                        {/* Submission status row */}
+                        <div className="flex items-center justify-between border-b border-white/5 px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            {isRunning
+                              ? <span className="h-2 w-2 rounded-full border border-emerald-400 border-t-transparent animate-spin" />
+                              : <span className="text-[10px] text-emerald-400">○</span>}
+                            <span className="font-mono text-[11px] text-white/60 truncate max-w-65">{execSubId}</span>
+                            <span className="text-white/25">·</span>
+                            <span className="text-[11px] text-amber-200/75">confirm</span>
+                            <span className="text-white/25">·</span>
+                            <span className={`text-[11px] font-semibold ${isRunning ? "text-emerald-300" : "text-white/55"}`}>
+                              {isRunning ? "RUNNING" : (prog?.status ?? "—").toUpperCase()}
+                            </span>
+                          </div>
+                          <span className="font-mono text-[10px] text-white/35 shrink-0">início {startedTime}</span>
+                        </div>
+                        {/* Console header bar */}
+                        <div className="flex items-center justify-between border-b border-white/5 bg-black/20 px-3 py-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-white/40 text-[10px]">▶_</span>
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-white/65">Console Executivo</span>
+                            {isRunning && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/50 bg-emerald-500/12 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-300">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />RODANDO
+                              </span>
+                            )}
+                            {!isRunning && total > 0 && (
+                              <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${failed > 0 ? "border-rose-500/45 bg-rose-500/12 text-rose-300" : "border-emerald-500/45 bg-emerald-500/12 text-emerald-300"}`}>
+                                {failed > 0 ? "↺ PARCIAL" : "✓ CONCLUÍDO"}
+                              </span>
+                            )}
+                            {execSubId !== "—" && <span className="font-mono text-[10px] text-white/25 truncate max-w-45">job: {execSubId}</span>}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button type="button" onClick={() => setYankeeExecAutoScroll((v) => !v)} className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide border transition-colors ${yankeeExecAutoScroll ? "border-emerald-500/40 bg-emerald-500/12 text-emerald-300" : "border-white/12 text-white/30"}`}>✓ AUTOSCROLL</button>
+                            <button type="button" onClick={() => setYankeeExecShowRaw((v) => !v)} className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide border transition-colors ${yankeeExecShowRaw ? "border-cyan-500/40 bg-cyan-500/12 text-cyan-300" : "border-white/12 text-white/30"}`}>CRU</button>
+                          </div>
+                        </div>
+                        {/* Console body */}
+                        <div
+                          ref={(el) => { (yankeeExecConsoleRef as any).current = el; if (el && yankeeExecAutoScroll) el.scrollTop = el.scrollHeight; }}
+                          className="max-h-100 overflow-y-auto px-3 py-2 space-y-1 font-mono text-[11px]"
+                        >
+                          {yankeeExecShowRaw ? (
+                            <pre className="text-[10px] text-white/45 whitespace-pre-wrap break-all">{JSON.stringify(prog, null, 2)}</pre>
+                          ) : (
+                            <>
+                              {/* RUN INICIADO */}
+                              {yankeeExecStartedAt && (
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-emerald-400">🚀</span>
+                                    <span className="font-semibold text-white/90">RUN INICIADO</span>
+                                    {total > 0 && <span className="text-white/55">{total} quadras</span>}
+                                    <span className="rounded-sm border border-rose-500/55 bg-rose-500/18 px-1 py-0 text-[9px] font-bold text-rose-200 uppercase">CONFIRM</span>
+                                    <span className="text-white/35">·</span>
+                                    <span className="text-white/55">conta rogerio</span>
+                                  </div>
+                                  <span className="text-white/28 shrink-0">{startedTime}</span>
+                                </div>
+                              )}
+                              {/* Sessão autenticada */}
+                              {total > 0 && (
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1.5">
+                                    <span>🔑</span>
+                                    <span className="text-white/65">Sessão autenticada</span>
+                                    <span className="text-white/35">·</span>
+                                    <span className="text-white/55">rogerio</span>
+                                  </div>
+                                  <span className="text-white/28 shrink-0">{prog?.submitted_at ? new Date(prog.submitted_at + (prog.submitted_at.includes("Z") ? "" : "Z")).toLocaleTimeString("pt-BR") : startedTime}</span>
+                                </div>
+                              )}
+                              {/* Barra de progresso */}
+                              {total > 0 && (
+                                <div className="flex items-center gap-2 py-0.5">
+                                  <span className="text-white/38 shrink-0 text-[10px]">progresso</span>
+                                  <div className="flex-1 h-1.5 rounded-full bg-white/6 overflow-hidden">
+                                    <div className="h-full rounded-full bg-emerald-400 transition-all duration-700" style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <span className="text-white/55 shrink-0">{submitted + dupes}/{total}</span>
+                                  {submitted > 0 && <span className="text-emerald-300 shrink-0 font-semibold">✓{submitted}</span>}
+                                  {failed > 0 && <span className="text-rose-300 shrink-0 font-semibold">✗{failed}</span>}
+                                  {dupes > 0 && <span className="text-amber-300 shrink-0 font-semibold">⟳{dupes}</span>}
+                                </div>
+                              )}
+                              {/* Aguardando dados */}
+                              {isRunning && total === 0 && (
+                                <div className="flex items-center gap-2 text-white/35 py-2">
+                                  <span className="h-2.5 w-2.5 rounded-full border-2 border-white/25 border-t-white/65 animate-spin shrink-0" />
+                                  <span>Validando quadras na bookline… aguardando tickets</span>
+                                </div>
+                              )}
+                              {/* Linhas por ticket */}
+                              {execTickets.map((t: any) => {
+                                const idx = Number(t.ticket_idx);
+                                const label = `Q${String(idx + 1).padStart(2, "0")}`;
+                                const isSub = t.status === "submitted";
+                                const isFail = t.status === "failed";
+                                const isDupe = t.status === "duplicate_skipped";
+                                const isIP = t.status === "submitting";
+                                const isPend = ["pending", "dry_ok"].includes(t.status);
+                                const expOdd = Number(t.expected_ticket_odd);
+                                const actOdd = Number(t.actual_ticket_odd);
+                                const iconEl = isSub ? <span className="text-emerald-400">✓</span>
+                                  : isFail ? <span className="text-rose-400">✗</span>
+                                  : isDupe ? <span className="text-amber-400">⟳</span>
+                                  : isIP ? <span className="h-2 w-2 rounded-full border border-cyan-400 border-t-transparent animate-spin inline-block" />
+                                  : <span className="text-white/20">○</span>;
+                                const labelCls = isSub ? "text-emerald-300" : isFail ? "text-rose-300" : isDupe ? "text-amber-300" : isIP ? "text-cyan-300" : "text-white/40";
+                                const rowCls = isSub ? "text-white/80" : isFail ? "text-rose-300/75" : isDupe ? "text-amber-300/70" : isIP ? "text-cyan-300/70" : "text-white/30";
+                                return (
+                                  <div key={idx} className={`flex items-center justify-between gap-2 ${rowCls}`}>
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <span className="w-3 flex items-center justify-center shrink-0">{iconEl}</span>
+                                      <span className={`font-bold shrink-0 ${labelCls}`}>{label}</span>
+                                      {Number.isFinite(expOdd) && <span className="text-white/40">est <span className={Number.isFinite(actOdd) ? "text-yellow-300/85" : "text-white/55"}>{expOdd.toFixed(2)}</span></span>}
+                                      <span className="text-white/30">·</span>
+                                      <span className="text-white/45">stake <span className="text-white/65">R${Number(t.stake_brl).toFixed(2)}</span></span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      {isSub && (
+                                        <>
+                                          <span className="rounded border border-emerald-500/40 bg-emerald-500/12 px-1 py-0 text-[9px] font-bold text-emerald-200">✓1</span>
+                                          <span className="font-mono font-semibold text-white/85">{t.external_ticket_id}</span>
+                                          {Number.isFinite(actOdd) && <span className="text-yellow-300">@{actOdd.toFixed(2)}</span>}
+                                        </>
+                                      )}
+                                      {isDupe && <span className="font-mono text-amber-200/65">{t.external_ticket_id}</span>}
+                                      {isFail && <span className="text-rose-300/65 max-w-45 truncate" title={t.error ?? ""}>{t.error ?? "erro"}</span>}
+                                      {isPend && <span className="uppercase text-[10px] tracking-wider text-white/25">AGUARDANDO</span>}
+                                      {isIP && <span className="uppercase text-[10px] tracking-wider text-cyan-300/55 animate-pulse">ENVIANDO…</span>}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </>
+                          )}
+                        </div>
+                        {/* Footer retry-failed */}
+                        {!isRunning && failed > 0 && prog?.submission_id && (
+                          <div className="border-t border-rose-500/15 px-3 py-2 flex items-center justify-between gap-3">
+                            <span className="text-[11px] text-rose-300/75">
+                              {failed} ticket{failed !== 1 ? "s" : ""} falharam — retentar somente os falhos
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleYankeeRetryFailed(prog.submission_id)}
+                              disabled={yankeeRetryFailedLoading}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/45 bg-rose-500/10 px-2.5 py-1 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {yankeeRetryFailedLoading
+                                ? <><span className="h-2.5 w-2.5 rounded-full border border-rose-400 border-t-transparent animate-spin" />Retentando…</>
+                                : <>↺ Retentar {failed} falhos</>}
+                            </button>
+                          </div>
+                        )}
+                        {/* Footer success */}
+                        {!isRunning && total > 0 && failed === 0 && (
+                          <div className="border-t border-emerald-500/12 px-3 py-2 flex items-center justify-between gap-3">
+                            <span className="text-[11px] text-emerald-300/70">
+                              {submitted} submetidos{dupes > 0 ? ` · ${dupes} duplicados` : ""} · 0 falhos
+                            </span>
+                            <span className="font-mono text-[10px] text-white/25 truncate max-w-50">{prog?.submission_id}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Resultado dry-run */}
                   {yankeeDryRunResult && (() => {
@@ -3818,39 +4119,90 @@ export default function ScoutCorePage() {
               <p className="text-gray-600 text-sm text-center py-10">Nenhum run ativo. Execute o pipeline ou selecione um run no histórico.</p>
             ) : (
               <>
-                {/* Run info */}
-                <div className={`${SOFT_CARD} p-4 space-y-1.5`}>
-                  <div className="text-xs text-gray-500">Run ativo</div>
-                  <div className="font-mono text-sm text-emerald-300">{fmtRunSeq(runData)}</div>
-                  <div className="text-xs text-gray-500">{runData.date_start} → {runData.date_end} · {runData.matches} partidas · ID {runShortId(runData.run_id)}</div>
-                </div>
-
-                {/* KPIs dinâmicos (Bloco 5.3) */}
-                {resolverStats && (
-                  <div className="grid grid-cols-3 gap-3">
-                    {[
-                      ["Predições", resolverStats.count,     "text-white", null],
-                      ["Green",     resolverStats.green,     "text-green-400", resolverGreenPct],
-                      ["Red",       resolverStats.red,       "text-red-400", resolverRedPct],
-                      ["Void",      resolverStats.void,      resolverStats.void > 0 ? "text-slate-300" : "text-gray-500", null],
-                      ["Pendentes", resolverStats.pending,   resolverStats.pending > 0 ? "text-yellow-400" : "text-gray-500", null],
-                      ["Cert.",     resolverStats.certified, "text-cyan-300", null],
-                      ["Taxa",      resolverStats.green > 0 || resolverStats.red > 0
-                        ? `${((resolverStats.green / Math.max(1, resolverStats.green + resolverStats.red)) * 100).toFixed(1)}%`
-                        : "—",                          "text-emerald-400", null],
-                    ].map(([l, v, c, detail]) => (
-                      <div key={l as string} className={`${SOFT_CARD} p-3 text-center`}>
-                        <div className={`text-xl font-bold ${c}`}>{v as any}</div>
-                        <div className="text-xs text-gray-500 mt-0.5">{l as string}</div>
-                        {detail && (
-                          <div className={`mt-1 text-[11px] font-mono ${l === "Green" ? "text-emerald-300" : "text-rose-300"}`}>
-                            {detail as string}
-                          </div>
-                        )}
+                <div className={`${CARD} p-4 space-y-3`}>
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="min-w-0 space-y-1">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">Run ativo</div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span className="font-mono text-sm font-semibold text-emerald-300">{fmtRunSeq(runData)}</span>
+                        <span className="text-[11px] text-white/50">{runData.date_start} → {runData.date_end} · {runData.matches} partidas</span>
+                        <span className="rounded-md border border-emerald-500/16 bg-black/25 px-2 py-0.5 font-mono text-[10px] text-cyan-200/80">ID {runShortId(runData.run_id)}</span>
                       </div>
-                    ))}
+                    </div>
+                    {resolverStats && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {[
+                          ["Predições", resolverStats.count, "text-white"],
+                          ["Pend.", resolverStats.pending, resolverStats.pending > 0 ? "text-yellow-300" : "text-white/55"],
+                          ["Cert.", resolverStats.certified, "text-cyan-300"],
+                        ].map(([label, value, tone]) => (
+                          <div key={label as string} className="rounded-lg border border-emerald-500/14 bg-black/25 px-3 py-1.5 text-center">
+                            <div className={`font-mono text-sm font-bold ${tone as string}`}>{value as any}</div>
+                            <div className="text-[10px] uppercase tracking-wider text-white/35">{label as string}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+
+                  {resolverStats && (
+                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                      {[
+                        ["Green", resolverStats.green, "text-emerald-300", resolverGreenPct],
+                        ["Red", resolverStats.red, "text-rose-300", resolverRedPct],
+                        ["Void", resolverStats.void, resolverStats.void > 0 ? "text-slate-200" : "text-white/45", null],
+                        ["Taxa", resolverStats.green > 0 || resolverStats.red > 0
+                          ? `${((resolverStats.green / Math.max(1, resolverStats.green + resolverStats.red)) * 100).toFixed(1)}%`
+                          : "—", "text-emerald-300", "taxa dos resolvidos"],
+                      ].map(([label, value, tone, detail]) => (
+                        <div key={label as string} className="rounded-lg border border-emerald-500/14 bg-black/25 px-3 py-2.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="text-[10px] uppercase tracking-wider text-white/35">{label as string}</div>
+                              <div className={`mt-1 font-mono text-lg font-bold ${tone as string}`}>{value as any}</div>
+                            </div>
+                            {detail && <div className="text-right text-[10px] text-white/35">{detail as string}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="grid gap-2 md:grid-cols-3">
+                    <button onClick={() => settleRun(true)} disabled={dryRunLoading || settleLoading || repairLoading}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-500/35 bg-cyan-500/15 py-2 text-sm font-medium text-cyan-100 transition-colors hover:bg-cyan-500/25 disabled:opacity-50">
+                      {dryRunLoading && <Loader2 size={14} className="animate-spin" />}
+                      {dryRunLoading ? "Simulando…" : "Dry-run"}
+                    </button>
+
+                    <button onClick={repairRun} disabled={repairLoading || dryRunLoading || settleLoading || !runData?.run_id}
+                      className={`inline-flex items-center justify-center gap-2 rounded-xl py-2 text-sm font-medium text-white transition-colors disabled:opacity-50 ${repairConfirm ? "bg-amber-600 hover:bg-amber-500" : "bg-cyan-800 hover:bg-cyan-700"}`}
+                      title="Reseta result/settled_at e reliquida com as regras atuais. Clique duas vezes para confirmar.">
+                      {repairLoading && <Loader2 size={14} className="animate-spin" />}
+                      {repairLoading ? "Reparando…" : repairConfirm ? "Confirmar reparo" : "Reparar histórico"}
+                    </button>
+
+                    {!settleConfirm ? (
+                      <button onClick={startSettleConfirm} disabled={dryRunLoading || repairLoading || settleLoading || !runData?.run_id}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-700 py-2 text-sm font-semibold text-white transition-colors hover:bg-orange-600 disabled:opacity-40">
+                        {settleLoading && <Loader2 size={14} className="animate-spin" />}
+                        {settleLoading ? "Liquidando…" : "Liquidar run"}
+                      </button>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        <button onClick={cancelSettleConfirm} disabled={settleLoading}
+                          className={`rounded-xl py-2 text-sm transition-colors disabled:opacity-50 ${SUBTLE_BUTTON}`}>
+                          Cancelar
+                        </button>
+                        <button onClick={() => settleRun(false)} disabled={settleLoading}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-600 py-2 text-sm font-semibold text-white transition-colors hover:bg-orange-500 disabled:opacity-50">
+                          {settleLoading && <Loader2 size={14} className="animate-spin" />}
+                          {settleLoading ? "Liquidando…" : `Confirmar (${settleCountdown}s)`}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
 
                 {resolverActivity && (
                   <div className={`rounded-xl border p-4 space-y-3 ${
@@ -3940,42 +4292,6 @@ export default function ScoutCorePage() {
                     </div>
                   </div>
                 )}
-
-                {/* Botões */}
-                <div className="grid grid-cols-3 gap-3">
-                  <button onClick={() => settleRun(true)} disabled={dryRunLoading || settleLoading || repairLoading}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-500/35 bg-cyan-500/15 py-2.5 text-sm font-medium text-cyan-100 transition-colors hover:bg-cyan-500/25 disabled:opacity-50">
-                    {dryRunLoading && <Loader2 size={14} className="animate-spin" />}
-                    {dryRunLoading ? "Simulando dry-run…" : "Dry-run"}
-                  </button>
-
-                  <button onClick={repairRun} disabled={repairLoading || dryRunLoading || settleLoading || !runData?.run_id}
-                    className={`inline-flex items-center justify-center gap-2 ${repairConfirm ? "bg-amber-600 hover:bg-amber-500" : "bg-cyan-800 hover:bg-cyan-700"} disabled:opacity-50 text-white font-medium py-2.5 rounded-xl transition-colors text-sm`}
-                    title="Reseta result/settled_at e reliquida com as regras atuais. Clique duas vezes para confirmar.">
-                    {repairLoading && <Loader2 size={14} className="animate-spin" />}
-                    {repairLoading ? "Reparando…" : repairConfirm ? "Clique de novo p/ confirmar" : "Reparar histórico"}
-                  </button>
-
-                  {!settleConfirm ? (
-                    <button onClick={startSettleConfirm} disabled={dryRunLoading || repairLoading || settleLoading || !runData?.run_id}
-                      className="inline-flex items-center justify-center gap-2 bg-orange-700 hover:bg-orange-600 disabled:opacity-40 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm">
-                      {settleLoading && <Loader2 size={14} className="animate-spin" />}
-                      {settleLoading ? "Liquidando run…" : "Liquidar Run"}
-                    </button>
-                  ) : (
-                    <div className="flex gap-2">
-                      <button onClick={cancelSettleConfirm} disabled={settleLoading}
-                        className={`flex-1 rounded-xl py-2.5 text-sm transition-colors disabled:opacity-50 ${SUBTLE_BUTTON}`}>
-                        Cancelar
-                      </button>
-                      <button onClick={() => settleRun(false)} disabled={settleLoading}
-                        className="inline-flex flex-1 items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm">
-                        {settleLoading && <Loader2 size={14} className="animate-spin" />}
-                        {settleLoading ? "Liquidando…" : `Confirmar (${settleCountdown}s)`}
-                      </button>
-                    </div>
-                  )}
-                </div>
 
                 {/* Yankee manual */}
                 <div className={`${CARD} p-4 space-y-4`}>
@@ -4287,7 +4603,7 @@ export default function ScoutCorePage() {
                             type="text"
                             value={resolverSearch}
                             onChange={(e) => setResolverSearch(e.target.value)}
-                            placeholder="Buscar time, liga ou mercado…"
+                            placeholder="Buscar confronto, time, liga ou mercado…"
                             className="w-full rounded-lg border border-emerald-500/20 bg-black/30 py-1.5 pl-7 pr-3 text-xs text-white placeholder:text-white/35 focus:outline-none focus:border-emerald-400"
                           />
                         </div>
@@ -4325,12 +4641,20 @@ export default function ScoutCorePage() {
                         )}
                       </div>
 
-                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                         <ThemedSelect
                           value={resolverLiga}
                           ariaLabel="Filtrar por liga"
                           options={resolverFacets.ligas}
                           onChange={setResolverLiga}
+                          buttonClassName="py-1.5 text-xs"
+                          listClassName="text-xs"
+                        />
+                        <ThemedSelect
+                          value={resolverMatch}
+                          ariaLabel="Filtrar por confronto"
+                          options={resolverFacets.matches}
+                          onChange={setResolverMatch}
                           buttonClassName="py-1.5 text-xs"
                           listClassName="text-xs"
                         />
