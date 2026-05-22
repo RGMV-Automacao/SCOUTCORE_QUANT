@@ -1117,6 +1117,92 @@ export function registerStrategies(app, { repo }) {
     return out;
   });
 
+  // ── Ticket progress (polling durante submit) ──────────────────────────────
+  const getLatestRealSubmission = repo.db.prepare(`
+    SELECT submission_id, run_id, status, stake_per_ticket, tickets_count, submitted_at
+    FROM yankee_submissions
+    WHERE run_id = ? AND is_dry_run = 0
+    ORDER BY submitted_at DESC
+    LIMIT 1
+  `);
+
+  app.get('/v1/runs/:id/yankee/submissions/current/ticket-progress', async (req, reply) => {
+    const { id } = req.params;
+    const submission = getLatestRealSubmission.get(id);
+    if (!submission) return reply.code(404).send({ error: 'no_real_submission_found' });
+    const tickets = getSubmissionTicketsBySubmissionId.all(submission.submission_id).map((t) => ({
+      ticket_idx: t.ticket_idx,
+      status: t.status,
+      external_ticket_id: t.external_ticket_id,
+      actual_ticket_odd: t.actual_ticket_odd,
+      expected_ticket_odd: t.expected_ticket_odd,
+      stake_brl: t.stake_brl,
+      error: t.error,
+      attempts: t.attempts,
+      submitted_at: t.submitted_at,
+      last_attempt_at: t.last_attempt_at,
+    }));
+    return {
+      submission_id: submission.submission_id,
+      run_id: id,
+      status: submission.status,
+      stake_per_ticket: submission.stake_per_ticket,
+      tickets_count: submission.tickets_count,
+      submitted_at: submission.submitted_at,
+      tickets,
+    };
+  });
+
+  // ── Retry somente tickets com falha ───────────────────────────────────────
+  app.post('/v1/runs/:id/yankee/submissions/:submissionId/retry-failed', async (req, reply) => {
+    const { id, submissionId } = req.params;
+    const { confirm } = req.body ?? {};
+    if (confirm !== true) {
+      return reply.code(400).send({ error: 'confirm_required', hint: 'set confirm:true in body' });
+    }
+    const row = getSubmissionWithAudit.get(id, submissionId);
+    if (!row) return reply.code(404).send({ error: 'submission_not_found' });
+    const externalValidation = parseJsonOr(row.external_validation_json, null);
+    const blocking = parseJsonOr(row.blocking_json, []);
+    const sourceTickets = parseJsonOr(row.tickets_json, []);
+    if (blocking.length > 0 || !isExternalValidationPassed(externalValidation)) {
+      return reply.code(409).send({
+        error: 'submission_not_retryable',
+        blocking,
+        external_summary: externalValidation?.summary ?? null,
+      });
+    }
+    const failedTickets = getSubmissionTicketsBySubmissionId.all(submissionId)
+      .filter((t) => t.status === 'failed');
+    if (failedTickets.length === 0) {
+      return reply.code(400).send({ error: 'no_failed_tickets', hint: 'all tickets already submitted or skipped' });
+    }
+    const failedIdxs = failedTickets.map((t) => Number(t.ticket_idx));
+    const realSubmitSummary = await submitRealTickets({
+      runId: id,
+      submissionId,
+      externalValidation,
+      sourceTickets,
+      stake: Number(row.stake_per_ticket),
+      ticketSelection: { ticket_idxs: failedIdxs },
+    });
+    const status = computeYankeeSubmissionStatus({ isDryRun: false, blocking: [], externalValidation, realSubmitSummary });
+    const warnings = [];
+    if (!realSubmitSummary.enabled) warnings.push('real_submit_disabled:set_SCOUTCORE_BOOKLINE_REAL_SUBMIT_true');
+    if (realSubmitSummary.failed > 0) warnings.push(`real_submit_failed:${realSubmitSummary.failed}`);
+    if (realSubmitSummary.submitted > 0) warnings.push(`real_submit_confirmed:${realSubmitSummary.submitted}`);
+    updateSubmissionRealSummary.run(JSON.stringify(realSubmitSummary), submissionId);
+    updateSubmissionStatus.run(status, warnings.length ? JSON.stringify(warnings) : row.warnings, submissionId);
+    return {
+      submission_id: submissionId,
+      run_id: id,
+      status,
+      warnings,
+      real_submit_summary: realSubmitSummary,
+      retried_ticket_idxs: failedIdxs,
+    };
+  });
+
   app.get('/v1/runs/:id/yankee/submissions', async (req, _reply) => {
     const { id } = req.params;
     const rows = repo.db.prepare(`
