@@ -246,22 +246,22 @@ Verificações:
 - validation_scope = local_board_plus_superbet_catalog
 - external_validation.summary.tickets_total > 0
 - can_submit_real = true
-- blocking = [] para um dry-run aprovado; se vier `superbet_boards_failed:*` ou `superbet_gaps:*`, mesmo após o reparo automático, o ticket ainda não está apto
+- blocking = [] para um dry-run aprovado; se vier `superbet_boards_failed:*` ou `superbet_gaps:*`, o ticket ainda não está apto
 - stake_total = tickets_count × stake_per_ticket
 
 Observação importante:
 
 - No contrato atual, o dry-run persiste uma linha em yankee_submissions com is_dry_run=1 e status semântico: `external_passed` se aprovado; `external_failed` se houver bloqueio.
-- O dry-run agora também tenta casar cada board com o catálogo público do Bet Builder e pedir a quote combinada da Superbet.
-- Se a validação externa reprovar um confronto por `price_drift_combo:*` e/ou `actual_ev_combo:*`, a montagem automática da Yankee exclui esse match_id e tenta remontar o board com os próximos confrontos aprovados.
-- O payload expõe esse histórico em `repair_history[]`, agora com `excluded_matches[] { match_id, match, reasons[] }` e `added_matches[] { match_id, match }`, e adiciona warnings no formato `superbet_repair_pass:N:excluded_matches:X`.
+- O dry-run tenta casar cada board com o catálogo público do Bet Builder e pedir a quote combinada bookline.
+- Drift de preço (`price_drift_combo:*`) não troca mais confronto e não entra em blocking; ele aparece como warning e o payload carrega `actual_combo_odd`/`actual_ticket_odd` para a UI exibir a odd descontada real.
+- `repair_history[]` deve ficar vazio no fluxo automático atual; troca silenciosa por `excluded_match_ids` ficou desativada para preservar coerência entre tabela, refresh e submissão real.
 - status=external_passed sozinho ainda deve ser conferido junto com `blocking=[]`, `can_submit_real=true` e `external_validation.summary.tickets_ok = tickets_total`.
-- Divergência de preço acima do limite atual também entra em blocking, no formato `price_drift_combo:*` dentro de external_validation.tickets[].boards[].gaps.
+- Divergência de preço acima do limite atual entra em `external_validation.tickets[].boards[].warnings`, não em `gaps`.
 - EV real combinado abaixo do mínimo configurado entra em blocking como `actual_ev_combo:*`; padrão atual aceita pequena variação até `min_actual_combo_ev=-0.01` (-1%).
-- Mercado ausente, seleção ausente ou quote inativa continuam apenas como trava; nesses casos o board não é trocado automaticamente.
-- Submit real agora pode ser chamado sem dry-run prévio; nesse caso o backend monta a Yankee, aplica reparo automático, valida catálogo/quote público e só tenta tickets `ok`.
+- Mercado ausente, seleção ausente, EV real abaixo do mínimo ou quote inativa continuam como trava; nesses casos o board não é trocado automaticamente.
+- Submit real agora pode ser chamado sem dry-run prévio; nesse caso o backend monta a Yankee, valida catálogo/quote público e só tenta tickets `ok`.
 - Submit real também pode seguir em modo parcial quando houver tickets `ok` e outros bloqueados. Os inválidos ficam fora do submit e podem ser ajustados depois.
-- Se `repair_history` vier preenchido no dry-run e `blocking` estiver vazio, o submit real deve enviar `overrides = $dryRun.effective_overrides` para usar o board reparado retornado na própria resposta. Sem dry-run, o backend calcula os overrides efetivos no próprio submit.
+- Submit real deve enviar overrides explícitos do usuário quando houver; o backend não herda mais `effective_overrides` de submissões anteriores.
 
 Tarefa 1.4 — Preview seguro de 1 quadra sem submit
 
@@ -323,9 +323,9 @@ Tarefa 1.6 — Critérios de aprovação do dry-run
 Critério | Gate | Ação se falhar
 board_status = ok | Obrigatório | Expandir janela, revisar oferta de odds ou reduzir filtros
 tickets_count ≥ 1 | Obrigatório | Verificar odds no DB, reexecutar scraper, ampliar janela
-blocking = [] | Obrigatório | Não seguir para submit; revisar strategy, drift e gaps retornados por external_validation
+blocking = [] | Obrigatório | Não seguir para submit; revisar strategy, EV real e gaps retornados por external_validation
 external_validation.summary.tickets_ok = tickets_total | Obrigatório | Não seguir para submit; ajustar board ou reexecutar mais perto do horário do jogo
-repair_history revisado | Recomendado | Conferir quais confrontos foram excluídos automaticamente e se o board final continua coerente
+repair_history vazio | Recomendado | Se vier preenchido, tratar como histórico legado e revisar antes de seguir
 combo_odd por confronto dentro da faixa do Yankee | Obrigatório | Revisar odd_combo_range e odd_combo_exception
 Warnings críticos revisados | Recomendado | Inspecionar board.warnings e motor-runs do run
 stake_total ≤ limite diário | Obrigatório | Ajustar stake_per_ticket

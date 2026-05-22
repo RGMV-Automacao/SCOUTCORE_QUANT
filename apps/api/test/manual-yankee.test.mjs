@@ -35,7 +35,7 @@ const run = {
 };
 
 describe('manual Yankee builder', () => {
-  it('marks quote-drift and real-EV failures as repairable for auto Yankee replacement', () => {
+  it('keeps legacy repair classifier limited to gap-only historical payloads', () => {
     const repairable = collectRepairableDriftMatchIds({
       tickets: [
         {
@@ -87,6 +87,29 @@ describe('manual Yankee builder', () => {
     });
 
     assert.deepEqual(repairable, ['match-drift', 'match-ev-negative', 'match-drift-ev-negative']);
+  });
+
+  it('treats price drift warning as submittable when there are no blocking gaps', () => {
+    const validation = {
+      summary: { tickets_total: 1, tickets_ok: 1, boards_failed: 0, gaps_total: 0 },
+      tickets: [
+        {
+          ticket_idx: 0,
+          status: 'ok',
+          boards: [
+            {
+              match_id: 'match-drift-warning',
+              status: 'ok',
+              gaps: [],
+              warnings: ['price_drift_combo:18%>8%'],
+            },
+          ],
+        },
+      ],
+    };
+
+    assert.equal(isExternalValidationPassed(validation), true);
+    assert.equal(computeYankeeSubmissionStatus({ isDryRun: true, blocking: [], externalValidation: validation }), 'external_passed');
   });
 
   it('does not call a failed dry-run validated', () => {
