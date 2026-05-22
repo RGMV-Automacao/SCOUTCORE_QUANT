@@ -13,6 +13,7 @@ import {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:4040";
 const YANKEE_OVERRIDES = {};
 const SIMULATION_MODE_STORAGE_KEY = "scoutcore:web:simulation-mode";
+const ACTIVE_RUN_STORAGE_KEY = "scoutcore:web:active-run-id";
 
 // ── Visual tokens (apollo-turbo) ──────────────────────────────────────────────
 const PANEL =
@@ -998,6 +999,7 @@ export default function ScoutCorePage() {
     setLoading(false);
     try {
       await loadRunStrategies(runId);
+      await hydrateYankeeSubmissionState(runId);
       await loadPredictions(runId);
     } catch { /* não derruba o run */ }
   }, [fetchRunSummary]);
@@ -1069,6 +1071,70 @@ export default function ScoutCorePage() {
     setPipelineProgress((prev) => Math.max(prev, 9));
   };
 
+  async function syncYankeeTicketProgress(runId: string) {
+    try {
+      const response = await fetch(`${API_BASE}/v1/runs/${runId}/yankee/submissions/current/ticket-progress`, { cache: "no-store" });
+      if (!response.ok) return null;
+      const progressData = await response.json();
+      setYankeeExecProgress(progressData);
+      return progressData;
+    } catch {
+      return null;
+    }
+  }
+
+  async function hydrateYankeeSubmissionState(runId: string) {
+    try {
+      const response = await fetch(`${API_BASE}/v1/runs/${runId}/yankee/submissions`, { cache: "no-store" });
+      if (!response.ok) return;
+      const data = await response.json();
+      const items: any[] = Array.isArray(data?.items) ? data.items : [];
+      const latestReal = items.find((item) => !item.is_dry_run);
+      const latestDry = items.find((item) => item.is_dry_run);
+      const latest = latestReal ?? latestDry;
+      if (!latest?.submission_id) return;
+
+      const detailResponse = await fetch(`${API_BASE}/v1/runs/${runId}/yankee/submissions/${latest.submission_id}`, { cache: "no-store" });
+      if (!detailResponse.ok) return;
+      const detail = await detailResponse.json();
+      if (detail.is_dry_run) {
+        setYankeeDryRunResult(detail);
+        setYankeeSubmitResult(null);
+      } else {
+        setYankeeSubmitResult(detail);
+        setYankeeSubmitNotice(`Submissão persistida: ${detail.status ?? "sem status"}.`);
+      }
+
+      if (Array.isArray(detail.tickets) && detail.tickets.length > 0) {
+        setYankeeData((prev: any) => ({
+          ...(prev ?? {}),
+          board: detail.board ?? prev?.board ?? null,
+          tickets: detail.tickets,
+          submission_id: detail.submission_id,
+          repair_history: detail.repair_history ?? [],
+          effective_overrides: detail.effective_overrides ?? YANKEE_OVERRIDES,
+        }));
+      }
+
+      if (!detail.is_dry_run) {
+        const progressData = await syncYankeeTicketProgress(runId);
+        if (!progressData && Array.isArray(detail.tickets_audit)) {
+          setYankeeExecProgress({
+            submission_id: detail.submission_id,
+            run_id: runId,
+            status: detail.status,
+            stake_per_ticket: detail.stake_per_ticket,
+            tickets_count: detail.tickets_count,
+            submitted_at: detail.submitted_at,
+            tickets: detail.tickets_audit,
+          });
+        }
+      }
+    } catch {
+      // Estado histórico é melhoria de UX; não bloqueia o run.
+    }
+  }
+
   // ── Main run ────────────────────────────────────────────────────────────────
   const handleRun = async () => {
     setError(null);
@@ -1131,6 +1197,7 @@ export default function ScoutCorePage() {
       setPipelinePhase("done");
 
       await loadRunStrategies(run.run_id);
+      await hydrateYankeeSubmissionState(run.run_id);
       await loadPredictions(run.run_id);
 
       setActiveTab("confrontos");
@@ -1216,7 +1283,7 @@ export default function ScoutCorePage() {
       const r = await fetch(`${API_BASE}/v1/runs/${runData.run_id}/yankee/dry-run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stake_per_ticket: yankeeStake, overrides: YANKEE_OVERRIDES }),
+        body: JSON.stringify({ stake_per_ticket: yankeeStake, overrides: YANKEE_OVERRIDES, reset_overrides: true }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
@@ -1311,7 +1378,8 @@ export default function ScoutCorePage() {
           stake_per_ticket: yankeeStake,
           confirm: true,
           dry_run_submission_id: yankeeDryRunResult?.submission_id,
-          overrides: yankeeDryRunResult?.effective_overrides ?? YANKEE_OVERRIDES,
+          overrides: YANKEE_OVERRIDES,
+          reset_overrides: true,
         }),
       });
       const data = await r.json();
@@ -1727,6 +1795,7 @@ export default function ScoutCorePage() {
   // e só quer trocar o run ativo. Trocar de aba sozinho frustra a navegação.
   const selectRun = (r: any) => {
     setRunData(r);
+    try { window.localStorage.setItem(ACTIVE_RUN_STORAGE_KEY, r.run_id); } catch { /* ignore */ }
     setYankeeData(null); setPicksData(null); setDuplasData(null);
     setSettleResult(null); setDryRunResult(null);
     setYankeeDryRunResult(null); setYankeeSubmitResult(null); setYankeeSubmitNotice(null);
@@ -1744,13 +1813,29 @@ export default function ScoutCorePage() {
     resetResolverFilters();
     setPipelinePhase("done");
     setPipelineProgress(7);
-    loadRunStrategies(r.run_id).catch((e: any) => setError(e.message ?? "Erro ao carregar estratégias do run"));
+    (async () => {
+      try {
+        await loadRunStrategies(r.run_id);
+        await hydrateYankeeSubmissionState(r.run_id);
+      } catch (e: any) {
+        setError(e.message ?? "Erro ao carregar estratégias do run");
+      }
+    })();
     loadPredictions(r.run_id).catch(() => {});
   };
+
+  useEffect(() => {
+    if (runData || runsList.length === 0) return;
+    let savedRunId: string | null = null;
+    try { savedRunId = window.localStorage.getItem(ACTIVE_RUN_STORAGE_KEY); } catch { /* ignore */ }
+    const selected = runsList.find((item) => item.run_id === savedRunId) ?? runsList[0];
+    if (selected) selectRun(selected);
+  }, [runsList, runData]);
 
   // ── Derived ───────────────────────────────────────────────────────────────────
   const readyCombos: any[] = yankeeData?.board?.ready_combos ?? [];
   const tickets:     any[] = yankeeData?.tickets ?? [];
+  const yankeeExecTicketByIdx = new Map((yankeeExecProgress?.tickets ?? []).map((ticket: any) => [Number(ticket.ticket_idx), ticket]));
   const yankeeDryRunBlocking: string[] = Array.isArray(yankeeDryRunResult?.blocking) ? yankeeDryRunResult.blocking : [];
   const yankeeDryRunSummary = yankeeDryRunResult?.external_validation?.summary ?? null;
   const yankeeDryRunTicketOkCount = Number(yankeeDryRunSummary?.tickets_ok ?? 0);
@@ -2697,6 +2782,7 @@ export default function ScoutCorePage() {
                         res === "GREEN" ? "bg-emerald-600/35 border border-emerald-400 text-emerald-100"
                         : res === "RED" ? "bg-rose-600/35 border border-rose-400 text-rose-100"
                         : "bg-amber-600/25 border border-amber-400/70 text-amber-100";
+                      const comboOddDisplay = Number(c.actual_combo_odd ?? c.combo_odd);
                       return (
                         <tr key={i} className={TABLE_ROW}>
                           <td className="py-2 pr-3 text-gray-600">{i + 1}</td>
@@ -2720,7 +2806,7 @@ export default function ScoutCorePage() {
                               </div>
                             )}
                           </td>
-                          <td className="py-2 pr-3 text-right font-mono text-white font-semibold">{c.combo_odd?.toFixed(2) ?? "—"}</td>
+                          <td className="py-2 pr-3 text-right font-mono text-white font-semibold">{Number.isFinite(comboOddDisplay) ? comboOddDisplay.toFixed(2) : "—"}</td>
                           <td className="py-2 pr-3 text-right font-mono text-yellow-400">{(c.rank_score ?? c.quality_score)?.toFixed?.(2) ?? "—"}</td>
                           <td className="py-2 pr-3 text-right font-mono text-gray-300">{c.n_legs ?? c.legs?.length ?? "—"}</td>
                           <td className="py-2">
@@ -2850,12 +2936,22 @@ export default function ScoutCorePage() {
                       {tickets.map((t: any, i: number) => {
                         const legs: any[] = getTicketBoards(t);
                         const ticketIdx = Number(t.ticket_idx ?? i);
+                        const auditTicket: any = yankeeExecTicketByIdx.get(ticketIdx);
+                        const auditStatus = auditTicket?.status;
                         const realSummary = yankeeSubmitResult?.real_submit_summary ?? null;
                         const selectedTicketIdxs = new Set((realSummary?.selected_ticket_idxs ?? []).map((value: any) => Number(value)));
                         const selectedForSubmit = selectedTicketIdxs.has(ticketIdx);
                         const submitted = selectedForSubmit && Number(realSummary?.submitted ?? 0) > 0;
                         const failedSubmit = selectedForSubmit && Number(realSummary?.failed ?? 0) > 0 && Number(realSummary?.submitted ?? 0) === 0;
-                        const tStatus = submitted ? "SUBMETIDO" : failedSubmit ? "FALHOU" : selectedForSubmit ? "ALVO" : "READY";
+                        const tStatus = auditStatus === "submitted" ? "SUBMETIDO"
+                          : auditStatus === "duplicate_skipped" ? "DUPLICADO"
+                          : auditStatus === "failed" ? "FALHOU"
+                          : auditStatus === "submitting" ? "ENVIANDO"
+                          : auditStatus === "skipped" ? "PULADO"
+                          : submitted ? "SUBMETIDO"
+                          : failedSubmit ? "FALHOU"
+                          : selectedForSubmit ? "ALVO" : "READY";
+                        const ticketOddDisplay = Number(t.actual_ticket_odd ?? auditTicket?.actual_ticket_odd ?? t.ticket_odd);
                         // Resumo: agrega resultados das legs já enriquecidas pelo backend.
                         // Cada confronto é GREEN se TODAS as suas legs forem green.
                         const perConfronto = legs.map((c) => aggregateLegsResult(c?.legs));
@@ -2887,6 +2983,7 @@ export default function ScoutCorePage() {
                               const leg = c.legs?.[0] ?? {};
                               const ciIdx = (t.confronto_indices ?? [])[j];
                               const cellAgg = perConfronto[j];
+                              const comboOddDisplay = Number(c.actual_combo_odd ?? c.combo_odd);
                               const cellIcon = cellAgg.status === "GREEN" ? "✓" : cellAgg.status === "RED" ? "X" : "O";
                               const cellColor = cellAgg.status === "GREEN" ? "text-emerald-300"
                                 : cellAgg.status === "RED" ? "text-rose-300" : "text-amber-300";
@@ -2906,16 +3003,19 @@ export default function ScoutCorePage() {
                                       <span className="text-gray-200 truncate">{leg.home ?? "?"} × {leg.away ?? "?"}</span>
                                     </div>
                                   </td>
-                                  <td className="py-2 px-2 text-right font-mono text-gray-300 whitespace-nowrap">{c.combo_odd?.toFixed?.(2) ?? "—"}</td>
+                                  <td className="py-2 px-2 text-right font-mono text-gray-300 whitespace-nowrap">{Number.isFinite(comboOddDisplay) ? comboOddDisplay.toFixed(2) : "—"}</td>
                                 </Fragment>
                               );
                             })}
-                            <td className="py-2 px-3 text-right font-mono text-green-400 font-bold">{t.ticket_odd?.toFixed(2) ?? "—"}</td>
+                            <td className="py-2 px-3 text-right font-mono text-green-400 font-bold">{Number.isFinite(ticketOddDisplay) ? ticketOddDisplay.toFixed(2) : "—"}</td>
                             <td className="py-2 px-3 text-right font-mono text-white">R$ {t.stake_brl?.toFixed(2) ?? "—"}</td>
                             <td className="py-2 px-3 text-center">
                               <span className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-bold font-mono ${
                                 tStatus === "SUBMETIDO" ? "bg-cyan-900/40 border border-cyan-700/40 text-cyan-300"
                                   : tStatus === "FALHOU" ? "bg-rose-900/40 border border-rose-700/40 text-rose-300"
+                                  : tStatus === "DUPLICADO" ? "bg-amber-900/35 border border-amber-600/35 text-amber-200"
+                                  : tStatus === "ENVIANDO" ? "bg-cyan-900/35 border border-cyan-600/35 text-cyan-200"
+                                  : tStatus === "PULADO" ? "bg-white/5 border border-white/10 text-white/35"
                                   : tStatus === "ALVO" ? "bg-amber-900/35 border border-amber-600/35 text-amber-200"
                                   : "bg-emerald-950/25 border border-emerald-500/20 text-emerald-100/65"
                               }`}>{tStatus}</span>
@@ -2936,7 +3036,7 @@ export default function ScoutCorePage() {
                     <div className="font-semibold text-emerald-200">{yankeeHover.leg?.home} × {yankeeHover.leg?.away}</div>
                     <div className="mt-1 text-white/55">Liga: <span className="text-white/80">{yankeeHover.leg?.liga}</span></div>
                     <div className="mt-2 grid grid-cols-3 gap-1 border-t border-emerald-500/15 pt-2">
-                      <div><div className="text-white/45">Odd conf.</div><div className="font-mono font-semibold text-emerald-300">{yankeeHover.combo?.combo_odd?.toFixed?.(2) ?? "—"}</div></div>
+                      <div><div className="text-white/45">Odd conf.</div><div className="font-mono font-semibold text-emerald-300">{fmtPtOrDash(Number(yankeeHover.combo?.actual_combo_odd ?? yankeeHover.combo?.combo_odd), 2)}</div></div>
                       <div><div className="text-white/45">Legs</div><div className="font-mono text-cyan-300">{yankeeHover.combo?.n_legs ?? yankeeHover.combo?.legs?.length ?? "—"}</div></div>
                       <div><div className="text-white/45">Score</div><div className="font-mono text-yellow-300">{(yankeeHover.combo?.rank_score ?? yankeeHover.combo?.quality_score)?.toFixed?.(2) ?? "—"}</div></div>
                     </div>
@@ -3372,7 +3472,7 @@ export default function ScoutCorePage() {
                               </div>
                             )}
                             <ValidationRepairHistory
-                              title="Trocas automáticas para auditoria"
+                              title="Histórico legado de reparo"
                               items={yankeeDryRepairHistory}
                               matchLabelById={knownMatchLabelById}
                             />
@@ -3493,7 +3593,7 @@ export default function ScoutCorePage() {
                               </div>
                             )}
                             <ValidationRepairHistory
-                              title="Trocas automáticas para auditoria"
+                              title="Histórico legado de reparo"
                               items={yankeeSubmitRepairHistory}
                               matchLabelById={knownMatchLabelById}
                             />

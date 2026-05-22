@@ -19,7 +19,6 @@ const manualTicketKind = (size) => {
 };
 
 const manualSlotKey = (matchId, marketKey) => `${matchId ?? ''}::${marketKey ?? ''}`;
-const DEFAULT_SB_REPAIR_PASSES = 2;
 
 function numberFromEnv(name, fallback) {
   const value = Number(process.env[name]);
@@ -181,6 +180,77 @@ function collectBoardIssuesByMatch(externalValidation) {
   return [...reasonsByMatch.values()];
 }
 
+function countValidationWarnings(externalValidation, prefix) {
+  const unique = new Set();
+  for (const ticket of externalValidation?.tickets || []) {
+    for (const board of ticket?.boards || []) {
+      for (const warning of board?.warnings || []) {
+        if (typeof warning !== 'string' || !warning.startsWith(prefix)) continue;
+        unique.add(`${board.match_id ?? 'unknown'}:${warning}`);
+      }
+    }
+  }
+  return unique.size;
+}
+
+function enrichYankeeWithExternalPricing(yankee, externalValidation) {
+  if (!yankee || typeof yankee !== 'object' || !externalValidation) return yankee;
+
+  const validationBoardsByMatchId = new Map();
+  const validationTicketsByIdx = new Map();
+  for (const ticket of externalValidation?.tickets || []) {
+    validationTicketsByIdx.set(Number(ticket.ticket_idx), ticket);
+    for (const board of ticket?.boards || []) {
+      const matchId = board?.match_id ?? null;
+      if (!matchId || validationBoardsByMatchId.has(matchId)) continue;
+      validationBoardsByMatchId.set(matchId, {
+        external_status: board.status ?? null,
+        expected_combo_odd: Number.isFinite(Number(board.expected_combo_odd)) ? Number(board.expected_combo_odd) : null,
+        actual_combo_odd: Number.isFinite(Number(board.actual_combo_odd)) ? Number(board.actual_combo_odd) : null,
+        drift_pct: Number.isFinite(Number(board.drift_pct)) ? Number(board.drift_pct) : null,
+        actual_combo_ev: Number.isFinite(Number(board.actual_combo_ev)) ? Number(board.actual_combo_ev) : null,
+        event_id: board.event_id ?? null,
+        url_partida: board.url_partida ?? null,
+        gaps: Array.isArray(board.gaps) ? board.gaps : [],
+        warnings: Array.isArray(board.warnings) ? board.warnings : [],
+      });
+    }
+  }
+
+  const board = yankee.board && typeof yankee.board === 'object'
+    ? {
+        ...yankee.board,
+        ready_combos: Array.isArray(yankee.board.ready_combos)
+          ? yankee.board.ready_combos.map((combo) => ({
+              ...combo,
+              ...(validationBoardsByMatchId.get(combo?.match_id ?? combo?.opta_match_id) || {}),
+            }))
+          : yankee.board.ready_combos,
+      }
+    : yankee.board;
+
+  const tickets = Array.isArray(yankee.tickets)
+    ? yankee.tickets.map((ticket) => {
+        const validationTicket = validationTicketsByIdx.get(Number(ticket.ticket_idx));
+        return {
+          ...ticket,
+          expected_ticket_odd: Number.isFinite(Number(ticket.ticket_odd)) ? Number(ticket.ticket_odd) : null,
+          actual_ticket_odd: Number.isFinite(Number(validationTicket?.actual_ticket_odd)) ? Number(validationTicket.actual_ticket_odd) : null,
+          drift_pct: Number.isFinite(Number(validationTicket?.drift_pct)) ? Number(validationTicket.drift_pct) : null,
+          external_status: validationTicket?.status ?? null,
+          boards: Array.isArray(ticket.boards)
+            ? ticket.boards.map((ticketBoard) => ({
+                ...ticketBoard,
+                ...(validationBoardsByMatchId.get(ticketBoard?.match_id) || {}),
+              }))
+            : ticket.boards,
+        };
+      })
+    : yankee.tickets;
+
+  return { ...yankee, board, tickets };
+}
+
 export function collectRepairableDriftMatchIds(externalValidation) {
   return collectBoardIssuesByMatch(externalValidation)
     .filter((entry) => entry.reasons.length > 0 && entry.reasons.every((reason) => (
@@ -189,81 +259,15 @@ export function collectRepairableDriftMatchIds(externalValidation) {
     .map((entry) => entry.match_id);
 }
 
-function mergeExcludedMatchIds(overrides, failedMatchIds) {
-  const excluded = new Set(Array.isArray(overrides?.excluded_match_ids) ? overrides.excluded_match_ids : []);
-  for (const matchId of failedMatchIds || []) excluded.add(matchId);
-  return [...excluded];
-}
-
-function buildMatchLabelMap(run) {
-  const labels = new Map();
-  for (const slot of run?.slots || []) {
-    const matchId = slot?.match_id ?? slot?.opta_match_id ?? null;
-    if (!matchId || labels.has(matchId)) continue;
-    const home = String(slot?.home ?? '').trim();
-    const away = String(slot?.away ?? '').trim();
-    labels.set(matchId, home && away ? `${home} x ${away}` : null);
-  }
-  return labels;
-}
-
-function summarizeSelectedMatches(yankee, matchLabels) {
-  return (yankee?.board?.ready_combos || [])
-    .map((combo) => {
-      const matchId = combo?.match_id ?? combo?.opta_match_id ?? null;
-      if (!matchId) return null;
-      return {
-        match_id: matchId,
-        match: matchLabels.get(matchId) ?? null,
-      };
-    })
-    .filter(Boolean);
-}
-
-async function buildAutoYankeeWithSuperbetRepair({ run, repo, overrides, validationConfig, maxRepairPasses }) {
-  const matchLabels = buildMatchLabelMap(run);
-  let currentOverrides = overrides ?? {};
-  let yankee = await applyStrategy('yankee', run.slots, currentOverrides);
+async function buildAutoYankeeWithExternalValidation({ run, repo, overrides, validationConfig }) {
+  const currentOverrides = overrides ?? {};
+  const yankee = await applyStrategy('yankee', run.slots, currentOverrides);
   if (yankee.error || yankee.__error) return { yankee, externalValidation: null, repairHistory: [] };
-
-  const repairHistory = [];
-  let externalValidation = null;
-  const validationCache = { events: new Map(), catalogs: new Map(), quotes: new Map() };
-  for (let pass = 0; pass <= maxRepairPasses; pass++) {
-    const tickets = Array.isArray(yankee?.tickets) ? yankee.tickets : [];
-    if (tickets.length === 0) break;
-
-    externalValidation = await validateYankeeAgainstSuperbet({ repo, run, yankee, ...validationConfig, validationCache });
-    const boardIssues = collectBoardIssuesByMatch(externalValidation);
-    const selectedBefore = summarizeSelectedMatches(yankee, matchLabels);
-    const failedMatchIds = collectRepairableDriftMatchIds(externalValidation);
-    if (failedMatchIds.length === 0 || pass === maxRepairPasses) break;
-
-    const nextExcluded = mergeExcludedMatchIds(currentOverrides, failedMatchIds);
-    const newlyExcluded = nextExcluded.filter((matchId) => !(currentOverrides?.excluded_match_ids || []).includes(matchId));
-    if (newlyExcluded.length === 0) break;
-
-    repairHistory.push({
-      pass: pass + 1,
-      excluded_match_ids: newlyExcluded,
-      excluded_matches: newlyExcluded.map((matchId) => {
-        const issue = boardIssues.find((item) => item.match_id === matchId);
-        return issue ?? { match_id: matchId, match: matchLabels.get(matchId) ?? null, reasons: [] };
-      }),
-      summary_before: externalValidation.summary,
-    });
-    currentOverrides = { ...currentOverrides, excluded_match_ids: nextExcluded };
-    yankee = await applyStrategy('yankee', run.slots, currentOverrides);
-    if (yankee.error || yankee.__error) break;
-
-    const selectedAfter = summarizeSelectedMatches(yankee, matchLabels);
-    const addedMatches = selectedAfter.filter((item) => !selectedBefore.some((before) => before.match_id === item.match_id));
-    const lastEntry = repairHistory[repairHistory.length - 1];
-    lastEntry.added_match_ids = addedMatches.map((item) => item.match_id);
-    lastEntry.added_matches = addedMatches;
-  }
-
-  return { yankee, externalValidation, repairHistory, overrides: currentOverrides };
+  const tickets = Array.isArray(yankee?.tickets) ? yankee.tickets : [];
+  const externalValidation = tickets.length > 0
+    ? await validateYankeeAgainstSuperbet({ repo, run, yankee, ...validationConfig })
+    : null;
+  return { yankee, externalValidation, repairHistory: [], overrides: currentOverrides };
 }
 
 export function buildManualYankeeFromRunSlots({ run, legs, stakePerTicket }) {
@@ -605,29 +609,12 @@ export function registerStrategies(app, { repo }) {
     ORDER BY ticket_idx
   `);
 
-  const getLastSubmissionEffectiveOverrides = repo.db.prepare(`
-    SELECT a.submission_id, a.effective_overrides_json, s.submitted_at
-    FROM yankee_submission_audit a
-    JOIN yankee_submissions s ON s.submission_id = a.submission_id
-    WHERE a.run_id = ?
-      AND a.mode = 'auto_yankee'
-      AND a.effective_overrides_json IS NOT NULL
-      AND a.effective_overrides_json != '{}'
-    ORDER BY s.submitted_at DESC
-    LIMIT 1
-  `);
-
-  function resolveInheritedOverrides({ runId, bodyOverrides, reset }) {
+  function resolveInheritedOverrides({ bodyOverrides, reset }) {
     if (reset === true) return { overrides: {}, source: 'reset', inheritedFromSubmissionId: null };
     if (bodyOverrides !== undefined && bodyOverrides !== null) {
       return { overrides: bodyOverrides, source: 'explicit', inheritedFromSubmissionId: null };
     }
-    const last = getLastSubmissionEffectiveOverrides.get(runId);
-    if (!last) return { overrides: {}, source: 'none', inheritedFromSubmissionId: null };
-    const parsed = parseJsonOr(last.effective_overrides_json, {});
-    const excluded = Array.isArray(parsed?.excluded_match_ids) ? parsed.excluded_match_ids : [];
-    if (excluded.length === 0) return { overrides: {}, source: 'none', inheritedFromSubmissionId: null };
-    return { overrides: parsed, source: 'inherited', inheritedFromSubmissionId: last.submission_id };
+    return { overrides: {}, source: 'none', inheritedFromSubmissionId: null };
   }
 
   function validationTicketByIdx(externalValidation) {
@@ -832,10 +819,9 @@ export function registerStrategies(app, { repo }) {
 
     const isManual = manualLegs != null;
     const validationConfig = getExternalValidationConfig();
-    const maxRepairPasses = numberFromEnv('SCOUTCORE_SB_REPAIR_PASSES', DEFAULT_SB_REPAIR_PASSES);
     const inheritance = isManual
       ? { overrides: overrides ?? {}, source: overrides !== undefined ? 'explicit' : 'none', inheritedFromSubmissionId: null }
-      : resolveInheritedOverrides({ runId, bodyOverrides: overrides, reset: resetOverrides });
+      : resolveInheritedOverrides({ bodyOverrides: overrides, reset: resetOverrides });
     const effectiveInputOverrides = inheritance.overrides;
     const buildResult = isManual
       ? {
@@ -844,25 +830,21 @@ export function registerStrategies(app, { repo }) {
           repairHistory: [],
           overrides: effectiveInputOverrides,
         }
-      : await buildAutoYankeeWithSuperbetRepair({
+      : await buildAutoYankeeWithExternalValidation({
           run,
           repo,
           overrides: effectiveInputOverrides,
           validationConfig,
-          maxRepairPasses,
         });
-    const yankee = buildResult.yankee;
+    let yankee = buildResult.yankee;
     if (yankee.error) return { __error: yankee.error, __status: 400 };
     if (yankee.__error) return yankee;
     enrichWithSettlement(repo, runId, yankee);
 
-    const tickets = Array.isArray(yankee.tickets) ? yankee.tickets : [];
+    let tickets = Array.isArray(yankee.tickets) ? yankee.tickets : [];
     const warnings = Array.isArray(yankee.board?.warnings) ? [...yankee.board.warnings] : [];
     let externalValidation = buildResult.externalValidation;
     const repairHistory = Array.isArray(buildResult.repairHistory) ? buildResult.repairHistory : [];
-    for (const step of repairHistory) {
-      warnings.push(`superbet_repair_pass:${step.pass}:excluded_matches:${step.excluded_match_ids.length}`);
-    }
 
     // Validação de submissão (não bloqueia dry-run; bloqueia submit real)
     const blocking = [];
@@ -882,6 +864,8 @@ export function registerStrategies(app, { repo }) {
         });
       }
       if (externalValidation) {
+        const priceDriftWarnings = countValidationWarnings(externalValidation, 'price_drift_combo:');
+        if (priceDriftWarnings > 0) warnings.push(`bookline_price_drift_warning:${priceDriftWarnings}_boards`);
         warnings.push(
           `superbet_validated:${externalValidation.summary.tickets_ok}/${externalValidation.summary.tickets_total}_tickets`
         );
@@ -897,6 +881,9 @@ export function registerStrategies(app, { repo }) {
       blocking.push('superbet_validation_unavailable');
     }
 
+    yankee = enrichYankeeWithExternalPricing(yankee, externalValidation);
+    tickets = Array.isArray(yankee.tickets) ? yankee.tickets : [];
+
     const stakeTotal = +(tickets.length * stake).toFixed(2);
     let realSubmitSummary = null;
     let status = computeYankeeSubmissionStatus({ isDryRun, blocking, externalValidation, realSubmitSummary });
@@ -905,11 +892,6 @@ export function registerStrategies(app, { repo }) {
     const ticketsJson = JSON.stringify(tickets);
     let warningsJson = warnings.length ? JSON.stringify(warnings) : null;
     const effectiveOverrides = buildResult.overrides ?? effectiveInputOverrides ?? {};
-    if (inheritance.source === 'inherited') {
-      const excludedCount = Array.isArray(effectiveInputOverrides?.excluded_match_ids)
-        ? effectiveInputOverrides.excluded_match_ids.length : 0;
-      warnings.push(`overrides_inherited:from=${inheritance.inheritedFromSubmissionId}:excluded=${excludedCount}`);
-    }
 
     insertSubmission.run(
       submissionId,
@@ -1226,6 +1208,21 @@ export function registerStrategies(app, { repo }) {
     const { id, submissionId } = req.params;
     const row = getSubmissionFullDetail.get(id, submissionId);
     if (!row) return reply.code(404).send({ error: 'submission_not_found' });
+    const effectiveOverrides = parseJsonOr(row.effective_overrides_json, {});
+    const externalValidation = parseJsonOr(row.external_validation_json, null);
+    const sourceTickets = parseJsonOr(row.tickets_json, []);
+    let board = null;
+    try {
+      const run = getRunsStore().get(id);
+      if (run && row.mode === 'auto_yankee') {
+        const strategyResult = await applyStrategy('yankee', run.slots, effectiveOverrides);
+        if (!strategyResult.error && !strategyResult.__error) {
+          enrichWithSettlement(repo, id, strategyResult);
+          board = enrichYankeeWithExternalPricing(strategyResult, externalValidation)?.board ?? null;
+        }
+      }
+    } catch { /* detalhe historico deve continuar disponível mesmo sem board */ }
+
     const ticketsAudit = getSubmissionTicketsBySubmissionId.all(submissionId).map((t) => ({
       ...t,
       match_ids: parseJsonOr(t.match_ids_json, []),
@@ -1245,11 +1242,12 @@ export function registerStrategies(app, { repo }) {
       status: row.status,
       warnings: parseJsonOr(row.warnings, []),
       blocking: parseJsonOr(row.blocking_json, []),
-      effective_overrides: parseJsonOr(row.effective_overrides_json, {}),
+      effective_overrides: effectiveOverrides,
       repair_history: parseJsonOr(row.repair_history_json, []),
-      external_validation: parseJsonOr(row.external_validation_json, null),
+      external_validation: externalValidation,
       real_submit_summary: parseJsonOr(row.real_submit_summary_json, null),
-      tickets: parseJsonOr(row.tickets_json, []),
+      board,
+      tickets: sourceTickets,
       tickets_audit: ticketsAudit,
     };
   });

@@ -430,7 +430,7 @@ async function validateBoard({
     gaps.push({ market_key: null, reason: `quote_inactive:${quote?.status || 'unknown'}/${quote?.combinationBettingStatus || 'unknown'}` });
   }
   if (driftPct != null && driftPct > maxDropPct) {
-    gaps.push({ market_key: null, reason: `price_drift_combo:${driftPct}%>${maxDropPct}%` });
+    warnings.push(`price_drift_combo:${driftPct}%>${maxDropPct}%`);
   }
   if (isActualComboEvBelowMin(actualComboEv, minActualComboEv)) {
     gaps.push({ market_key: null, reason: `actual_ev_combo:${Number((actualComboEv * 100).toFixed(2))}%<${Number((minActualComboEv * 100).toFixed(2))}%` });
